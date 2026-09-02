@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_DB: sottaejap
+          POSTGRES_USER: sottaejap
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U sottaejap -d sottaejap"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      # 러너 안에서만 유효한 CI 전용 더미 값이다. 운영 비밀값이 아니다.
+      RUN_DB_INTEGRATION_TESTS: "true"
+      DB_URL: jdbc:postgresql://127.0.0.1:5432/sottaejap
+      DB_USER: sottaejap
+      DB_PASSWORD: ci-password
+      JWT_SECRET: Y2ktb25seS1kdW1teS1qd3Qtc2VjcmV0LW5vdC1mb3ItcHJvZHVjdGlvbi11c2UtMzJi
+      AI_SHARED_SECRET: ci-only-shared-secret
+      TZ: Asia/Seoul
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: JDK 21 설정
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Gradle 설정
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: 빌드와 테스트
+        run: ./gradlew build --no-daemon

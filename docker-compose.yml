@@ -1,0 +1,25 @@
+# 로컬 DB만 띄운다 (07 §4). 스키마는 Spring Flyway가 만든다.
+#   docker compose up -d db
+services:
+  db:
+    # pgvector 확장이 포함된 PostgreSQL 18. CREATE EXTENSION은 P2 착수 시 V3에서 (E-21).
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: sottaejap
+      POSTGRES_USER: sottaejap
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sottaejap}
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
+    ports:
+      - "5432:5432"
+    volumes:
+      # named volume만 쓴다. 호스트 바인드 마운트는 OS마다 경로 표기가 달라 깨진다 (07 §5-5).
+      - sottaejap_db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sottaejap -d sottaejap"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sottaejap_db_data:

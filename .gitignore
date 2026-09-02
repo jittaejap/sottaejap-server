@@ -1,0 +1,39 @@
+### macOS
+.DS_Store
+._*
+
+### Windows
+Thumbs.db
+[Dd]esktop.ini
+
+### Gradle · Java
+.gradle/
+build/
+out/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.war
+hs_err_pid*
+replay_pid*
+
+### IDE
+.idea/
+*.iml
+*.iws
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+### 환경 변수 — .env.example만 커밋한다 (07 §3)
+.env
+.env.*
+!.env.example
+
+### 로그
+*.log
+
+### 에이전트 개인 로컬 컨텍스트
+CLAUDE.local.md
+AGENTS.local.md
+.claude/settings.local.json
