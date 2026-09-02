@@ -48,7 +48,10 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
   `/chat`이 422 "Field required: body"를 돌려주고, Spring은 그것을 503 `LLM_UNAVAILABLE`로 보여줍니다. AI 서버가
   멀쩡한데 ai-ping이 503이면 이것부터 의심합니다.
 - `AI_TIMEOUT_MS`(15초)는 AI 내부의 LLM 8초 + AI → Spring 조회 왕복을 포함해야 합니다 (07 §10 리스크 4).
-  AI 응답에 `fallback`이 없을 수 있습니다 (06 R3 전). `ChatResponse.isFallback()`을 쓰고 `null`을 직접 비교하지 않습니다.
+  AI 응답의 `fallback`은 v1.6부터 항상 옵니다 (06 R3 완료). `OPENAI_API_KEY`가 비어 있어도 AI는 템플릿 응답 + `fallback: true` + 200이므로,
+  키 없는 로컬에서 ai-ping이 200에 `fallback: true`면 정상입니다 (E-38). 구버전 AI를 만날 수 있으니 `ChatResponse.isFallback()`을 유지하고 `null`을 직접 비교하지 않습니다.
+- AI의 `/chat`도 `INTERNAL_SHARED_SECRET`이 비어 있거나 헤더가 다르면 **모든 요청을 401**로 거부합니다 (E-37). 양쪽 값이 같아야 ai-ping이 200입니다.
+  AI 레포는 GitHub `jittaejap/sottaejap-ai`로 rename됐습니다 (E-42).
 
 ## 응답 계약 (05 §0)
 
