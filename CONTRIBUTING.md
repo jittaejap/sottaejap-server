@@ -1,7 +1,7 @@
 # sottaejap-server 협업 가이드
 
 이 문서를 읽으면 브랜치를 만들고, 커밋하고, PR을 올리고, 병합 전 검사를 통과시킬 수
-있습니다. 값의 정본은 `myDocs/07_기술스택_레포구성.md` §5·§6·§9입니다. 충돌하면 그쪽이
+있습니다. 값의 정본은 `sottaejap-docs/07_기술스택_레포구성.md` §5·§6·§9입니다. 충돌하면 그쪽이
 우선합니다.
 
 ## 1. Issue
@@ -114,7 +114,7 @@ DB가 필요한 컨텍스트 테스트는 `RUN_DB_INTEGRATION_TESTS=true`일 때
 
 API 경로, DTO, 공유 enum을 바꾸면 세 레포가 같이 깨집니다 (07 §6).
 
-1. `myDocs/05_API_명세서.md`를 **먼저** 고칩니다. 문서가 계약입니다.
+1. `sottaejap-docs/05_API_명세서.md`를 **먼저** 고칩니다. 문서가 계약입니다.
 2. 팀 채널에 `[계약변경] verdict enum 2종으로` 형태로 한 줄 공지합니다.
 3. 서버에서는 `common/enums`와 `CommonErrorCode`·DTO를 문서에 맞춰 고칩니다. AI 연동 규격(05 §3)을 바꿨다면
    통합 담당(고현석)이 `sottaejap-ai`의 `SpringClient`·`ChatRequest` 반영을 확인합니다.

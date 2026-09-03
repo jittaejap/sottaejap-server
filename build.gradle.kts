@@ -8,7 +8,7 @@ group = "kr.sottaejap"
 version = "0.0.1-SNAPSHOT"
 description = "소때잡 서버 — 인증 · 저장/조회 API · 파싱 · 규칙 엔진 · AI 내부 API · Flyway 소유"
 
-// 버전 정본은 myDocs/07_기술스택_레포구성.md §1 (v1.5). Boot BOM이 관리하는 것은 적지 않는다.
+// 버전 정본은 sottaejap-docs/07_기술스택_레포구성.md §1 (v1.5). Boot BOM이 관리하는 것은 적지 않는다.
 val springdocVersion = "3.1.0"
 val jjwtVersion = "0.13.0"
 

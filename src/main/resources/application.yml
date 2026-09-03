@@ -1,4 +1,4 @@
-# 값은 .env(로컬) 또는 컨테이너 환경 변수에서 온다. 키 목록의 정본은 myDocs/07_기술스택_레포구성.md §3.
+# 값은 .env(로컬) 또는 컨테이너 환경 변수에서 온다. 키 목록의 정본은 sottaejap-docs/07_기술스택_레포구성.md §3.
 spring:
   application:
     name: sottaejap-server

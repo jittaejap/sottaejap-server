@@ -16,7 +16,7 @@ AI 서버(`sottaejap-ai`)는 입구(회고 후보 제안)와 출구(설명)에�
 
 ## 시작하기
 
-Java 21 · Docker Desktop이 필요합니다. 설치는 `myDocs/07_기술스택_레포구성.md` §5-4를 따릅니다.
+Java 21 · Docker Desktop이 필요합니다. 설치는 `sottaejap-docs/07_기술스택_레포구성.md` §5-4를 따릅니다.
 
 ```bash
 cp .env.example .env            # Windows: Copy-Item .env.example .env

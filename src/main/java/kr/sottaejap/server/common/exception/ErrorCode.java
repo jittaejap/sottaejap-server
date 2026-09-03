@@ -3,7 +3,7 @@ package kr.sottaejap.server.common.exception;
 import org.springframework.http.HttpStatus;
 
 /**
- * 오류 코드 계약. 문자열 코드 목록의 정본은 myDocs/05_API_명세서.md §0이다.
+ * 오류 코드 계약. 문자열 코드 목록의 정본은 sottaejap-docs/05_API_명세서.md §0이다.
  */
 public interface ErrorCode {
 

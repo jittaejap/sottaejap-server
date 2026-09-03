@@ -1,4 +1,4 @@
--- 소때잡 초기 스키마. 정본: myDocs/04_데이터모델_ERD.md v1.3 §1.
+-- 소때잡 초기 스키마. 정본: sottaejap-docs/04_데이터모델_ERD.md v1.3 §1.
 -- Flyway forward-only — 적용된 파일은 고치지 않고 다음 V 번호를 추가한다.
 -- financial_chunks(pgvector)는 P2 착수 시 V3에서 (E-21).
 
