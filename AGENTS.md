@@ -80,6 +80,7 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 - 파일·폴더명은 영문 소문자와 하이픈만. `.env`는 터미널로 만듭니다. 줄바꿈은 `.gitattributes`가 LF로 강제합니다.
 - 컴파일·테스트 인코딩은 `build.gradle.kts`가 UTF-8로 고정합니다. Windows에서 한글이 깨지면 코드보다 이 설정을 먼저 봅니다.
 - 커밋 메시지에 `Co-Authored-By` 트레일러를 넣지 않습니다.
+- `main`에 직접 push하지 않습니다(본선 30시간만 예외). 흐름은 `Issue → 작업 브랜치 → main 대상 PR → 리뷰 → Squash and merge`이고, 규칙은 [CONTRIBUTING.md](./CONTRIBUTING.md)가 정본입니다.
 
 ## 완료 보고
 
