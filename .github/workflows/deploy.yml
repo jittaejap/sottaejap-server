@@ -114,7 +114,10 @@ jobs:
                 --format '{{.Repository}}:{{.Tag}}' \
                 | grep -vxF -e "jinocc/sottaejap-server:$SERVER_TAG" -e 'jinocc/sottaejap-server:latest' \
                 | xargs -r docker rmi || true
-              # 태그가 떨어진 레이어만 마저 지운다. -a 가 없어 다른 서비스 이미지는 건드리지 않는다.
+              # latest 를 남기는 이유: compose 가 ${SERVER_TAG:-latest} 라, 사람이 EC2에서
+              # SERVER_TAG 없이 up -d server 를 치면 latest 로 뜬다. 그 경로의 안전판이다.
+              # 태그가 떨어진 레이어를 마저 지운다. -a 가 없어 다른 서비스의 태그 있는
+              # 이미지는 건드리지 않는다. 태그 없는 레이어는 호스트 공용이라 같이 정리된다.
               docker image prune -f || true
               exit 0
             fi
