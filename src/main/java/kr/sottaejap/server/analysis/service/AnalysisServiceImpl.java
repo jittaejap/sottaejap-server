@@ -70,9 +70,19 @@ public class AnalysisServiceImpl implements AnalysisService {
                 points(snapshot.clusters()));
     }
 
-    /** 돌아본 소비가 하나도 없으면 AI를 부르지 않는다 (E-75) — 할 말이 정해져 있는데 15초를 쓸 이유가 없다. */
+    /**
+     * 재구성할 수치가 없으면 AI를 부르지 않는다 (E-75 · E-91) — 할 말이 정해져 있는데 15초를 쓸 이유가 없다.
+     *
+     * <p>조건이 둘이다. <b>돌아본 소비가 하나도 없거나</b>(E-75), <b>회고는 했지만 그 거래가 전부 기준월 밖이라
+     * {@code byCategory}가 통째로 빈 경우</b>다(E-91). 뒤쪽에서 AI가 받는 state는 {@code by_category []}에 금액이
+     * 전부 0이라 무엇을 쓰든 집계 밖 서술이 되고(NFR-02), 그것을 거를 숫자 가드(E-79 · 06 R19)는 {@code ai}에 아직
+     * 없다. 두 조건 모두에서 {@link HighlightTemplate#highlightFor}는 문장 하나로 정해져 있다.
+     *
+     * <p>앞 조건은 뒤 조건에 포함되지만 남겨 둔다 — E-75와 E-91이 코드에 그대로 보이고, {@code byCategory}에서
+     * 합계 0을 빼는 규칙(E-73)이 바뀌어도 E-75가 혼자 선다.
+     */
     private String highlight(long userId, AnalysisSnapshot snapshot, AnalysisSummary summary) {
-        if (snapshot.clusters().isEmpty()) {
+        if (snapshot.clusters().isEmpty() || summary.byCategory().isEmpty()) {
             return HighlightTemplate.highlightFor(summary);
         }
         return highlightService.highlight(userId, snapshot.analysisYearMonth(), summary);
