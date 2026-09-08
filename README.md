@@ -22,12 +22,15 @@ Java 21 · Docker Desktop이 필요합니다. 설치는 `sottaejap-docs/07_기�
 
 ```bash
 cp .env.example .env             # 최초 1회
+# .env의 JWT_SECRET을 채운다: openssl rand -base64 48
 docker compose up -d --build     # db(:5432) · server(:8080) · ai(:8000)
 ```
 
-`.env`의 값은 비워 둬도 됩니다. 비어 있으면 그 기능만 꺼집니다 — 카카오 키가 없으면 데모 로그인,
-`OPENAI_API_KEY`가 없으면 AI 폴백 응답, VAPID 키가 없으면 인앱 알림만 동작합니다.
-필요해질 때 `.env`에 채우고 다시 띄우면 그대로 들어갑니다.
+채워야 하는 값은 `JWT_SECRET` 하나입니다. 나머지는 비워 둬도 됩니다 — 비어 있으면 그 기능만 꺼집니다.
+카카오 키가 없으면 데모 로그인, `OPENAI_API_KEY`가 없으면 AI 폴백 응답, VAPID 키가 없으면 인앱 알림만
+동작합니다. 필요해질 때 `.env`에 채우고 다시 띄우면 그대로 들어갑니다.
+`JWT_SECRET`이 비면 `db`와 `ai`는 뜨고 `server`만 이유를 남기고 멈춥니다.
+DB만 쓸 때(`docker compose up -d db`)는 `.env`가 없어도 됩니다.
 
 `ai`는 형제 폴더 `../sottaejap-ai`의 소스를 굽습니다. 두 저장소가 나란히 있어야 하고,
 AI 저장소를 받지 않았다면 `docker compose up -d db server`로 둘만 띄웁니다.
