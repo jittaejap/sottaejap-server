@@ -63,6 +63,9 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 - 날짜는 ISO 8601 오프셋 문자열(`+09:00`)입니다. DTO는 `OffsetDateTime`을 씁니다. Jackson 3는 기본으로 ISO 문자열을
   내보내므로 `@JsonFormat`이 필요 없지만, 숫자 배열이 나오면 서버 버그이니 클라이언트가 덮기 전에 여기서 고칩니다.
 - 인증은 `Authorization: Bearer <token>` 한 가지입니다. 쿠키·세션·refresh 회전·CSRF는 쓰지 않습니다.
+- **카카오 로그인은 서버 리다이렉트가 아닙니다** (E-55). 클라이언트가 인가 코드를 받아 `POST /auth/login { provider: KAKAO, code, redirectUri }`로 넘기고,
+  `auth/kakao/KakaoOAuthClient`가 토큰 교환·프로필 조회를 합니다. `spring.security.oauth2` · `oauth2Login()` · OAuth2 Client 스타터를 넣지 마십시오 — 세션이 STATELESS이고
+  클라이언트(Vercel)와 서버(EC2)가 다른 도메인이라 깨집니다. 카카오 액세스 토큰은 저장하지 않고 우리 JWT만 내려갑니다. 첫 로그인이 곧 가입입니다 (E-56).
 
 ## 스키마는 Flyway forward-only
 
@@ -74,7 +77,7 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 ## 알려진 문서 갭 — 지어내지 말고 보고한다
 
 - `GET /users/me`의 `analysisYearMonth`(05)는 04 User 엔티티에 없고 산출 규칙도 없습니다. 지금은 `null`입니다.
-- `POST /auth/login`의 요청·응답 본문은 05에 명세가 없어 v1.5(서버 스캐폴딩)로 05 §2에 추가했습니다.
+- ~~`POST /auth/login`의 요청·응답 본문은 05에 명세가 없어 v1.5(서버 스캐폴딩)로 05 §2에 추가했습니다.~~ → v2.1에서 `KAKAO` 본문까지 확정 (E-55). 갭 아님.
 
 ## OS 혼용 (07 §5)
 

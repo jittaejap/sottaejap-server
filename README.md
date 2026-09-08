@@ -50,7 +50,7 @@ DB가 필요한 컨텍스트 테스트는 로컬에서 기본으로 건너뜁니
 
 ```
 src/main/java/kr/sottaejap/server/
-├── auth/         JWT 발급·검증 · Bearer 필터 · 데모 로그인 (카카오는 07 §10 스파이크 후)
+├── auth/         JWT 발급·검증 · Bearer 필터 · 데모 로그인 · kakao/ 인가 코드 교환·프로필 조회 (E-55)
 ├── user/         User · GET /users/me
 ├── transaction/  거래 업로드 · CSV 파서 · 조회
 ├── rules/        ★ 규칙 엔진 — cluster · shrinkage · verdict · saving · aggregate · RuleParams (정민규)
