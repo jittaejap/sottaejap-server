@@ -104,6 +104,7 @@ EC2 구성은 `deploy/docker-compose.yml`이 정본입니다. `sottaejap-ai`도 
 | `OPENAI_API_KEY` | 배포 중단 |
 | `KAKAO_CLIENT_ID` · `KAKAO_CLIENT_SECRET` · `KAKAO_REDIRECT_URIS` | 카카오 로그인만 불가 (비워도 기동) |
 | `DEMO_ACCOUNT_ENABLED` | 기본 `true`. 데모 로그인을 닫으려면 `false` |
+| `RULES_*` | 넣지 않습니다. `application.yml`의 잠정값이 그대로 쓰입니다. 값을 비운 키(`RULES_SHRINKAGE_K=`)는 잠정값이 아니라 `null`이라 회고 저장이 500이 됩니다 — 덮어쓸 때만 값과 함께 추가합니다 |
 
 ### 되돌리기
 

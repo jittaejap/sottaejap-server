@@ -51,12 +51,9 @@ services:
       KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       KAKAO_REDIRECT_URIS: ${KAKAO_REDIRECT_URIS:-}
-      # 규칙 엔진 파라미터 (07 §7). 비어 있으면 null로 바인딩된다 — 값이 생기면 ~/apps/.env 에 넣는다.
-      RULES_SHRINKAGE_K: ${RULES_SHRINKAGE_K:-}
-      RULES_ROLLUP_MIN_COUNT: ${RULES_ROLLUP_MIN_COUNT:-}
-      RULES_PENDING_MIN_COUNT: ${RULES_PENDING_MIN_COUNT:-}
-      RULES_AXIS_X_BOUNDARY: ${RULES_AXIS_X_BOUNDARY:-}
-      RULES_AXIS_Y_BOUNDARY: ${RULES_AXIS_Y_BOUNDARY:-}
+      # RULES_* 는 여기에 적지 않는다. 빈 문자열은 잠정값이 아니라 null이라,
+      # application.yml 의 잠정값이 덮여 회고 저장 첫 요청이 500(RuleParamMissingException)이 된다.
+      # 덮어쓸 때만 ~/apps/.env 에 키를 추가한다 (.env.example §규칙 파라미터).
     # 127.0.0.1 바인딩 — 바깥에서 직접 못 들어온다. Nginx만 통과한다.
     ports:
       - "127.0.0.1:8080:8080"
