@@ -81,8 +81,9 @@ src/main/java/kr/sottaejap/server/
 ├── analysis/     만족도 지도 · 소비 분석 · 묶음 조회 · '나만의 특징' 문장 (E-72~E-76)
 ├── suggestion/   재계산이 만드는 조정 제안 · 채택 · 거절 (E-81 · E-82)
 ├── goal/         목표 · 달성률 · 채택 제안 합산 (E-83)
+├── report/       월간 리포트 — 지난달은 첫 조회 때 MonthlySnapshot으로 확정 · 확정 시 목표 실적 배분 (E-94)
 ├── chat/         대화 저장 · 금융 지식 Q&A 프록시 (05 #24 · FR-12)
-├── rules/        ★ 규칙 엔진 — cluster · shrinkage · verdict · candidate · aggregate · saving · RuleParams (정민규)
+├── rules/        ★ 규칙 엔진 — cluster · shrinkage · verdict · candidate · aggregate · saving · report · RuleParams (정민규)
 ├── ai/           ★ AiClient — AI POST /chat 호출의 유일한 지점 · snake_case 변환
 ├── internalai/   기계가 부르는 경로 — /internal/ai/* 6종 · X-Internal-Secret 필터 · /internal-test/ai-ping
 ├── common/       ApiResponse · ErrorCode · 공유 enum

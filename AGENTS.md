@@ -66,6 +66,15 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 - 후보 `reason`은 Spring 템플릿(`ReasonTemplate`)이고 AI `app/ai/fallback.py`와 문장이 같아야 합니다 (E-62). `POST /retrospects/chat`은 회고 행을 만들지 않습니다 (E-63).
 - `skip`(05 #9) 엔드포인트는 없습니다 (E-65). 규칙 파라미터는 `application.yml` 잠정값이 기본이고 `RULES_*`로 덮어씁니다 (E-57).
 
+## 월간 리포트는 지난달을 첫 조회 때 확정한다 (E-94)
+
+- `GET /reports/monthly`의 **지난달**은 첫 조회 때 계산해 `monthly_snapshots`에 넣고 그 뒤로 다시 계산하지 않습니다. 회고를 더해도 숫자가
+  그대로여야 하므로 "재계산이 스냅샷도 갱신해야 하지 않나"는 맞지 않습니다. **이번 달**은 매번 계산하고 저장하지 않습니다. 스케줄러는 없습니다.
+- `Goal.currentAmount`(실적)가 오르는 경로는 **지난달이 확정되는 그 요청** 하나뿐입니다 — `savedAmount > 0`을 ADOPTED 제안이 붙은 목표에
+  `expectedSaving` 비율로 배분합니다. 채택(`adopt`)은 여전히 실적을 바꾸지 않습니다 (E-82). 확정과 배분은 한 트랜잭션이고, 같은 달의 동시 첫 조회는
+  `MonthlySnapshotRepository.insertIfAbsent`(`ON CONFLICT DO NOTHING`)가 가릅니다.
+- 산식(`totalSpending` · `savedAmount` · `unsatisfiedCount` · `repeatCount` · 배분)은 `rules/report/MonthlyDeltaRule`입니다. 현재 연월은 서비스가 `Clock`으로 넘깁니다.
+
 ## 응답 계약 (05 §0)
 
 - 모든 JSON은 `ApiResponse` 봉투 `{ success, data | error{code,message} }`입니다. 실패는
