@@ -13,7 +13,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClusterEngineTest {
 
@@ -31,7 +30,6 @@ class ClusterEngineTest {
         ClusterEvaluation leaf = result.clusters().get(0);
         assertEquals("배달|NIGHT|충동|혼자", leaf.clusterKey());
         assertNull(leaf.parentKey());
-        assertTrue(leaf.isLeaf());
         assertEquals(3, leaf.retrospectCount());
         assertEquals(-1.0 / 3, leaf.rawAverage(), 1e-9);
         assertEquals(36000, leaf.monthlyTotalAmount());

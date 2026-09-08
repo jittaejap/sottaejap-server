@@ -23,7 +23,9 @@ import java.util.List;
  * @param evaluationStatus     retrospectCount < pending-min-count 이면 PENDING
  * @param quadrant             PENDING 또는 burdenRatio null이면 null
  * @param verdict              PENDING이면 null
- * @param transactionIds       이 묶음(리프)에 속한 거래 id — 상위 묶음은 자식 합집합
+ * @param transactionIds       이 묶음에 <b>직접</b> 속한 거래 id — behaviorId를 배정할 대상이다.
+ *                             롤업으로 자식이 붙은 상위 묶음은 비어 있다. 자식 거래의 behaviorId는
+ *                             리프에 그대로 남는다 (E-59). 집계(retrospectCount · monthlyTotalAmount)만 합집합이다
  * @param sampleMerchants      묶음 명명용 가맹점 표본, 중복 제거 최대 3개
  */
 public record ClusterEvaluation(
@@ -43,8 +45,4 @@ public record ClusterEvaluation(
         List<Long> transactionIds,
         List<String> sampleMerchants
 ) {
-
-    public boolean isLeaf() {
-        return !clusterKey.endsWith("||");
-    }
 }

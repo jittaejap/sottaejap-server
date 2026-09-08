@@ -12,13 +12,15 @@ import java.util.List;
  *
  * @param shrinkageK      축소 추정 강도 k (액션시트 #15)
  * @param rollupMinCount  롤업 기준 건수 (#16) — 리프 회고 수가 이보다 작으면 상위 묶음에 붙는다 (E-59)
- * @param pendingMinCount 보류 임계값 (#17) — rollupMinCount 이하여야 한다
+ * @param pendingMinCount 보류 임계값 (#17) — rollupMinCount 이하여야 한다. 두 값을 다르게 두면
+ *                        롤업된 리프가 RESOLVED가 되어 상위 묶음과 함께 지도에 뜨고, 같은 금액이
+ *                        양쪽 monthlyTotalAmount에 잡혀 두 번 세어진다. 튜닝할 때 같이 움직여야 한다
  * @param axisXBoundary   가로축 경계 Bx = 월 합계 ÷ 월 예산 (#18)
  * @param axisYBoundary   세로축 경계 By (#18) — 0 또는 사용자 평균
  * @param chatWindowDays  채팅 회고 진입 노출 창, 오늘 포함 (E-48)
  * @param sensitivity     E-46 프리셋 3종 — 이상치 중앙값 배수
  * @param candidate       후보 선별 ⓪ 수치 (#20 · E-62)
- * @param cluster         묶음 키 규칙 (B-10 · E-58)
+ * @param cluster         묶음 키 규칙 (B-10 · E-58) — mealCategories는 비어 있어도 안 된다
  */
 @ConfigurationProperties("rules")
 public record RuleParams(
