@@ -18,12 +18,27 @@ AI 서버(`sottaejap-ai`)는 입구(회고 후보 제안)와 출구(설명)에�
 
 Java 21 · Docker Desktop이 필요합니다. 설치는 `sottaejap-docs/07_기술스택_레포구성.md` §5-4를 따릅니다.
 
+**한 줄로 전부 띄우기** — db · server · ai 셋을 컨테이너로 함께 올립니다. `.env` 없이도 뜹니다.
+
+```bash
+docker compose up -d --build     # db(:5432) · server(:8080) · ai(:8000)
+```
+
+`ai`는 형제 폴더 `../sottaejap-ai`의 소스를 굽습니다. 두 저장소가 나란히 있어야 하고,
+AI 저장소를 받지 않았다면 `docker compose up -d db server`로 둘만 띄웁니다.
+코드를 고쳐도 자동 반영되지 않습니다 — 다시 `--build`합니다.
+
+**직접 띄우기** — 핫리로드·디버거가 필요할 때는 DB만 컨테이너로 두고 서버를 직접 돕니다.
+
 ```bash
 cp .env.example .env            # Windows: Copy-Item .env.example .env
 # .env의 JWT_SECRET을 채운다: openssl rand -base64 48
 docker compose up -d db          # pgvector/pgvector:pg18, :5432
 ./gradlew bootRun                # Windows: .\gradlew.bat bootRun — Flyway가 V1을 적용하고 :8080에서 뜬다
 ```
+
+`.env`를 채울 때 `AI_SHARED_SECRET`은 `sottaejap-ai`의 `INTERNAL_SHARED_SECRET`과 같은 값이어야 합니다.
+어긋나면 왕복이 전부 401입니다 (E-37). 컨테이너로 띄우면 compose가 같은 변수를 양쪽에 넘겨 이 실수가 나지 않습니다.
 
 확인:
 
