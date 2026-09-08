@@ -11,7 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * application.yml `rules.*` 잠정값(E-57)이 중첩 record까지 바인딩되는지 실제 컨텍스트로 확인한다.
- * 환경변수 RULES_*가 비어 있는 상태를 전제한다.
+ * 환경변수 `RULES_*`가 <b>없는</b> 상태를 전제한다 — 키를 두고 값만 비우면 잠정값이 아니라 null이 들어오고,
+ * 그건 {@link RuleParamsEmptyValueBindingTest}가 따로 본다.
  */
 @SpringBootTest
 @EnabledIfEnvironmentVariable(named = "RUN_DB_INTEGRATION_TESTS", matches = "true")

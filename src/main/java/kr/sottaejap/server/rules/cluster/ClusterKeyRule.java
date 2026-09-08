@@ -1,6 +1,7 @@
 package kr.sottaejap.server.rules.cluster;
 
 import kr.sottaejap.server.common.enums.TimeSlot;
+import kr.sottaejap.server.rules.RuleParamMissingException;
 import kr.sottaejap.server.rules.RuleParams;
 
 import java.util.List;
@@ -17,7 +18,8 @@ import java.util.regex.Pattern;
  * 목적·동행인이 둘 다 없는 리프는 상위 키와 글자가 같아진다 — 그래서
  * {@link #isParentKey(String)}가 그 리프에도 {@code true}를 준다. 회고가 붙은 거래에
  * 목적·동행인이 하나도 없으면 그 묶음은 애초에 상위 묶음과 같은 대상이므로 나누지 않는다.
- * {@link ClusterEvaluation#isLeaf()}도 같은 판정을 쓴다.
+ * 그래서 키 모양으로는 리프를 가릴 수 없다 — {@code behavior_id}를 배정할 거래는
+ * 키가 아니라 {@link ClusterEvaluation#transactionIds()}로 정한다 (E-59).
  */
 public final class ClusterKeyRule {
 
@@ -74,6 +76,11 @@ public final class ClusterKeyRule {
         List<String> mealCategories = RuleParams.require(
                 RuleParams.require(params.cluster(), "rules.cluster.meal-categories").mealCategories(),
                 "rules.cluster.meal-categories");
+        if (mealCategories.isEmpty()) {
+            // `RULES_CLUSTER_MEAL_CATEGORIES=`처럼 값을 비우면 null이 아니라 빈 리스트로 바인딩된다.
+            // 그대로 두면 `기타`를 뺀 모든 카테고리가 시간대 자리를 잃어 키가 조용히 퇴화한다 (E-58).
+            throw new RuleParamMissingException("rules.cluster.meal-categories");
+        }
         String resolvedCategory = resolveCategory(category).trim();
         if (UNCATEGORIZED.equals(resolvedCategory)) {
             return true;

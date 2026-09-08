@@ -103,10 +103,21 @@ class ClusterKeyRuleTest {
     }
 
     @Test
-    void 식사_카테고리_목록이_비면_계산을_거부한다() {
+    void 식사_카테고리_목록이_없으면_계산을_거부한다() {
         RuleParamMissingException exception = assertThrows(RuleParamMissingException.class,
                 () -> ClusterKeyRule.includesTimeSlot("식사", params(null)));
         assertTrue(exception.getMessage().contains("rules.cluster.meal-categories"));
+    }
+
+    /** `RULES_CLUSTER_MEAL_CATEGORIES=`로 값만 비우면 null이 아니라 빈 리스트가 들어온다 — 여기서 막는다 (E-58). */
+    @Test
+    void 식사_카테고리_목록이_비어_있어도_계산을_거부한다() {
+        RuleParamMissingException exception = assertThrows(RuleParamMissingException.class,
+                () -> ClusterKeyRule.includesTimeSlot("식사", params(List.of())));
+        assertTrue(exception.getMessage().contains("rules.cluster.meal-categories"));
+
+        assertThrows(RuleParamMissingException.class,
+                () -> ClusterKeyRule.leafKey("배달", TimeSlot.NIGHT, "충동", "혼자", params(List.of())));
     }
 
     @Test
