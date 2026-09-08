@@ -20,7 +20,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -34,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -68,7 +71,7 @@ class AuthServiceImplTest {
     void 카카오_첫_로그인은_사용자를_만들고_토큰을_준다() {
         when(kakaoOAuthClient.fetchProfile("code", REDIRECT_URI)).thenReturn(PROFILE);
         when(userRepository.findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, "5076490331")).thenReturn(Optional.empty());
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 42L));
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 42L));
         when(jwtTokenProvider.issueAccessToken(42L)).thenReturn(new AccessToken("jwt", Instant.parse("2026-09-08T09:00:00Z")));
 
         LoginResponse response = authService.login(new LoginRequest(AuthProvider.KAKAO, "code", REDIRECT_URI));
@@ -77,7 +80,7 @@ class AuthServiceImplTest {
         assertEquals("Bearer", response.tokenType());
         assertEquals("2026-09-08T18:00+09:00", response.expiresAt().toString());
         ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(saved.capture());
+        verify(userRepository).saveAndFlush(saved.capture());
         assertEquals(AuthProvider.KAKAO, saved.getValue().getAuthProvider());
         assertEquals("5076490331", saved.getValue().getProviderUserId());
         assertEquals("닉네임", saved.getValue().getNickname());
@@ -95,20 +98,20 @@ class AuthServiceImplTest {
 
         authService.login(new LoginRequest(AuthProvider.KAKAO, "code", REDIRECT_URI));
 
-        verify(userRepository, never()).save(any());
+        verify(userRepository, never()).saveAndFlush(any());
     }
 
     @Test
     void 이메일_없는_카카오_프로필도_사용자가_된다() {
         when(kakaoOAuthClient.fetchProfile("code", REDIRECT_URI)).thenReturn(new KakaoProfile("9", "닉", null));
         when(userRepository.findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, "9")).thenReturn(Optional.empty());
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 1L));
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 1L));
         when(jwtTokenProvider.issueAccessToken(anyLong())).thenReturn(new AccessToken("jwt", Instant.EPOCH));
 
         authService.login(new LoginRequest(AuthProvider.KAKAO, "code", REDIRECT_URI));
 
         ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(saved.capture());
+        verify(userRepository).saveAndFlush(saved.capture());
         assertNull(saved.getValue().getEmail());
     }
 
@@ -135,7 +138,43 @@ class AuthServiceImplTest {
 
         assertErrorCode(AuthErrorCode.OAUTH_CODE_INVALID,
                 () -> authService.login(new LoginRequest(AuthProvider.KAKAO, "used", REDIRECT_URI)));
-        verify(userRepository, never()).save(any());
+        verify(userRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void 동시_첫_로그인에서_진_요청도_승자의_사용자로_로그인된다() {
+        User winner = withId(User.social(AuthProvider.KAKAO, "5076490331", "닉네임", "user@example.com"), 42L);
+        when(kakaoOAuthClient.fetchProfile("code", REDIRECT_URI)).thenReturn(PROFILE);
+        when(userRepository.findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, "5076490331"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(winner));
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenThrow(new DataIntegrityViolationException("uq_users_provider"));
+        when(jwtTokenProvider.issueAccessToken(42L)).thenReturn(new AccessToken("jwt", Instant.EPOCH));
+
+        LoginResponse response = authService.login(new LoginRequest(AuthProvider.KAKAO, "code", REDIRECT_URI));
+
+        assertEquals("jwt", response.accessToken());
+        verify(userRepository, times(2)).findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, "5076490331");
+    }
+
+    @Test
+    void 충돌인데_재조회도_비면_예외를_삼키지_않는다() {
+        when(kakaoOAuthClient.fetchProfile("code", REDIRECT_URI)).thenReturn(PROFILE);
+        when(userRepository.findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, "5076490331")).thenReturn(Optional.empty());
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenThrow(new DataIntegrityViolationException("uq_users_provider"));
+
+        assertThrows(DataIntegrityViolationException.class,
+                () -> authService.login(new LoginRequest(AuthProvider.KAKAO, "code", REDIRECT_URI)));
+        verifyNoInteractions(jwtTokenProvider);
+    }
+
+    @Test
+    void login은_트랜잭션_경계_밖이다() throws NoSuchMethodException {
+        // 삽입이 충돌하면 그 트랜잭션은 rollback-only가 된다. 승자 재조회는 새 트랜잭션이어야 하므로 login을 묶지 않는다.
+        assertNull(AuthServiceImpl.class.getAnnotation(Transactional.class));
+        assertNull(AuthServiceImpl.class.getMethod("login", LoginRequest.class).getAnnotation(Transactional.class));
     }
 
     @Test
