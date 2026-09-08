@@ -26,26 +26,30 @@ class HighlightTemplateTest {
      * 이 사용자에게 "아직 돌아본 소비가 없어요"라고 말하지 않는다.
      */
     @Test
-    void 묶음은_있는데_기준월_합계가_0이면_회고가_없다고_말하지_않는다() {
+    void 묶음은_있는데_기준월_합계가_0이면_이번_달_회고를_권한다() {
         AnalysisSummary summary = new AnalysisSummary(
                 List.of(new VerdictSummary(Verdict.SUSTAIN, 1, 0, null),
                         new VerdictSummary(Verdict.ADJUST, 2, 0, null)),
                 new PendingSummary(0, 0, null),
                 List.of());
 
-        assertEquals(HighlightTemplate.NO_ADJUST, HighlightTemplate.highlightFor(summary));
+        // E-89 — "바꿀 소비가 없다"(NO_ADJUST)도 "돌아본 소비가 없다"(NO_RETROSPECT)도 아니다.
+        assertEquals(HighlightTemplate.NO_MONTH_ACTIVITY, HighlightTemplate.highlightFor(summary));
     }
 
     /** 보류만 있는 사용자도 회고는 한 사용자다 (E-73 — 보류는 판정이 없을 뿐 유효 묶음이다). */
     @Test
     void 보류_묶음만_있어도_회고가_없다고_말하지_않는다() {
+        // 보류 금액은 카테고리 합계에 들어가므로(E-73) byCategory가 비려면 보류 합계도 0이어야 한다.
         AnalysisSummary summary = new AnalysisSummary(
                 List.of(new VerdictSummary(Verdict.SUSTAIN, 0, 0, null),
                         new VerdictSummary(Verdict.ADJUST, 0, 0, null)),
-                new PendingSummary(2, 48_000, null),
+                new PendingSummary(2, 0, null),
                 List.of());
 
-        assertEquals(HighlightTemplate.NO_ADJUST, HighlightTemplate.highlightFor(summary));
+        String highlight = HighlightTemplate.highlightFor(summary);
+        assertTrue(!HighlightTemplate.NO_RETROSPECT.equals(highlight), highlight);
+        assertEquals(HighlightTemplate.NO_MONTH_ACTIVITY, highlight);
     }
 
     @Test
