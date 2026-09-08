@@ -6,7 +6,7 @@ import kr.sottaejap.server.rules.aggregate.CategorySummary;
 import kr.sottaejap.server.rules.aggregate.VerdictSummary;
 
 /**
- * '나만의 특징' 폴백 문장 3종 (⑨ · E-75). AI가 없거나(503) 빈 문장을 주거나 근거 밖 숫자를 쓰면 이 문장을 쓴다.
+ * '나만의 특징' 폴백 문장 4종 (⑨ · E-75 · E-89). AI가 없거나(503) 빈 문장을 주거나 근거 밖 숫자를 쓰면 이 문장을 쓴다.
  *
  * <p>집계에 실제로 있는 수치만 쓴다 (NFR-02) — 예산이 없어도 성립하도록 비율 대신 금액을 인용한다.
  */
