@@ -1,6 +1,5 @@
 package kr.sottaejap.server.retrospect.controller;
 
-import kr.sottaejap.server.auth.security.AuthenticatedUser;
 import kr.sottaejap.server.common.enums.EvaluationStatus;
 import kr.sottaejap.server.common.enums.Quadrant;
 import kr.sottaejap.server.common.enums.ReasonCode;
@@ -19,21 +18,16 @@ import kr.sottaejap.server.retrospect.dto.RetrospectChatResponse;
 import kr.sottaejap.server.retrospect.dto.RetrospectSaveRequest;
 import kr.sottaejap.server.retrospect.dto.RetrospectSaveResponse;
 import kr.sottaejap.server.retrospect.service.RetrospectService;
+import kr.sottaejap.server.support.FixedPrincipalResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.bind.support.WebDataBinderFactory;
-import org.springframework.web.context.request.NativeWebRequest;
-import org.springframework.web.method.support.HandlerMethodArgumentResolver;
-import org.springframework.web.method.support.ModelAndViewContainer;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -230,25 +224,4 @@ class RetrospectControllerTest {
                 .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
     }
 
-    /** standaloneSetup에는 Security 컨텍스트가 없어 @AuthenticationPrincipal을 고정 사용자로 채운다. */
-    static final class FixedPrincipalResolver implements HandlerMethodArgumentResolver {
-
-        private final long userId;
-
-        FixedPrincipalResolver(long userId) {
-            this.userId = userId;
-        }
-
-        @Override
-        public boolean supportsParameter(MethodParameter parameter) {
-            return parameter.hasParameterAnnotation(AuthenticationPrincipal.class)
-                    && parameter.getParameterType().equals(AuthenticatedUser.class);
-        }
-
-        @Override
-        public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-                                      NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
-            return new AuthenticatedUser(userId);
-        }
-    }
 }

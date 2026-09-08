@@ -74,4 +74,20 @@ public class User {
     public void updateAvgSatisfaction(Double avgSatisfaction) {
         this.avgSatisfaction = avgSatisfaction;
     }
+
+    /**
+     * 온보딩 2단계 · 마이페이지의 설정 변경 (FR-01-03,04,06). null은 "그대로 두기"다 —
+     * 예산은 필수 값이라(03 W-9) 한 번 정한 뒤 비우는 경로를 두지 않는다.
+     */
+    public void updateSettings(Integer monthlyBudget, Double outlierThreshold, Integer retrospectDelayDays) {
+        if (monthlyBudget != null) {
+            this.monthlyBudget = monthlyBudget;
+        }
+        if (outlierThreshold != null) {
+            this.outlierThreshold = outlierThreshold;
+        }
+        if (retrospectDelayDays != null) {
+            this.retrospectDelayDays = retrospectDelayDays;
+        }
+    }
 }

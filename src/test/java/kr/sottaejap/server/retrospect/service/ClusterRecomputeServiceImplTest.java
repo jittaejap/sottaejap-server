@@ -13,6 +13,7 @@ import kr.sottaejap.server.retrospect.repository.RetrospectWithTransaction;
 import kr.sottaejap.server.rules.RuleParamsFixture;
 import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.repository.TransactionRepository;
+import kr.sottaejap.server.transaction.service.TransactionService;
 import kr.sottaejap.server.user.domain.User;
 import kr.sottaejap.server.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,6 +62,8 @@ class ClusterRecomputeServiceImplTest {
     @Mock
     private TransactionRepository transactionRepository;
     @Mock
+    private TransactionService transactionService;
+    @Mock
     private UserRepository userRepository;
 
     private ClusterRecomputeServiceImpl service;
@@ -69,7 +73,7 @@ class ClusterRecomputeServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new ClusterRecomputeServiceImpl(retrospectRepository, behaviorClusterRepository,
-                transactionRepository, userRepository, RuleParamsFixture.sample());
+                transactionRepository, transactionService, userRepository, RuleParamsFixture.sample());
         user = User.social(AuthProvider.KAKAO, "kakao-1", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", USER_ID);
         ReflectionTestUtils.setField(user, "monthlyBudget", 1_000_000);
@@ -170,7 +174,7 @@ class ClusterRecomputeServiceImplTest {
 
     @Test
     void 거래가_없으면_아무것도_저장하지_않고_빈_목록을_준다() {
-        when(transactionRepository.findTopByUserIdOrderByOccurredAtDesc(USER_ID)).thenReturn(Optional.empty());
+        when(transactionService.analysisYearMonth(USER_ID)).thenReturn(null);
 
         assertEquals(List.of(), service.recomputeAll(USER_ID));
 
@@ -180,8 +184,7 @@ class ClusterRecomputeServiceImplTest {
 
     private void givenRetrospects(RetrospectWithTransaction... rows) {
         List<RetrospectWithTransaction> list = List.of(rows);
-        when(transactionRepository.findTopByUserIdOrderByOccurredAtDesc(USER_ID))
-                .thenReturn(Optional.of(list.get(0).transaction()));
+        when(transactionService.analysisYearMonth(USER_ID)).thenReturn(YearMonth.of(2026, 8));
         when(retrospectRepository.findAllWithTransactionByUserId(USER_ID)).thenReturn(list);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
     }

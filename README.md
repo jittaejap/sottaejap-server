@@ -51,12 +51,13 @@ DB가 필요한 컨텍스트 테스트는 로컬에서 기본으로 건너뜁니
 ```
 src/main/java/kr/sottaejap/server/
 ├── auth/         JWT 발급·검증 · Bearer 필터 · 데모 로그인 · kakao/ 인가 코드 교환·프로필 조회 (E-55)
-├── user/         User · GET /users/me
+├── user/         User · GET /users/me · PUT /users/me/settings (예산 · 임계값 · D+N)
 ├── transaction/  거래 업로드 · CSV 파서 · 조회
 ├── notification/ 인앱 알림 목록·읽음 · Web Push 구독 · 결제 시각 스케줄로 회고 요청 1건 생성 (FR-10)
 ├── retrospect/   회고 저장 · 후보 선별 · 대화 턴 프록시 · BehaviorCluster upsert (E-57~E-66)
+├── analysis/     만족도 지도 · 소비 분석 · 묶음 조회 · '나만의 특징' 문장 (E-72~E-76)
 ├── chat/         대화 저장 · 금융 지식 Q&A 프록시 (05 #24 · FR-12)
-├── rules/        ★ 규칙 엔진 — cluster · shrinkage · verdict · candidate · saving · aggregate · RuleParams (정민규)
+├── rules/        ★ 규칙 엔진 — cluster · shrinkage · verdict · candidate · aggregate · saving · RuleParams (정민규)
 ├── ai/           ★ AiClient — AI POST /chat 호출의 유일한 지점 · snake_case 변환
 ├── internalai/   기계가 부르는 경로 — /internal/ai/* 6종 · X-Internal-Secret 필터 · /internal-test/ai-ping
 ├── common/       ApiResponse · ErrorCode · 공유 enum

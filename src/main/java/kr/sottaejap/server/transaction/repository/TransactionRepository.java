@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -63,4 +64,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     /** 묶음 명명 표본 — 이 묶음에 배정된 거래 (E-64). */
     List<Transaction> findAllByBehaviorIdOrderByOccurredAtDesc(Long behaviorId);
+
+    /** 묶음 상세 — 상위 묶음과 그 자식 리프의 거래를 한 번에 읽는다 (FR-07-05 · E-59). */
+    List<Transaction> findAllByBehaviorIdInOrderByOccurredAtDescIdDesc(Collection<Long> behaviorIds);
 }

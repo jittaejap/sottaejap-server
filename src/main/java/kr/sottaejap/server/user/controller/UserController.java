@@ -1,12 +1,16 @@
 package kr.sottaejap.server.user.controller;
 
+import jakarta.validation.Valid;
 import kr.sottaejap.server.auth.security.AuthenticatedUser;
 import kr.sottaejap.server.common.response.ApiResponse;
 import kr.sottaejap.server.user.dto.UserMeResponse;
+import kr.sottaejap.server.user.dto.UserSettingsRequest;
 import kr.sottaejap.server.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -20,5 +24,12 @@ public class UserController {
     @GetMapping("/me")
     public ApiResponse<UserMeResponse> getMe(@AuthenticationPrincipal AuthenticatedUser user) {
         return ApiResponse.success(userService.getMe(user.userId()));
+    }
+
+    /** 05 §1 API 3 — 예산 · 임계값 · D+N (FR-01-03,04,06). */
+    @PutMapping("/me/settings")
+    public ApiResponse<UserMeResponse> updateSettings(@AuthenticationPrincipal AuthenticatedUser user,
+                                                      @Valid @RequestBody UserSettingsRequest request) {
+        return ApiResponse.success(userService.updateSettings(user.userId(), request));
     }
 }

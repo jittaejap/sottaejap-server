@@ -22,6 +22,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -73,6 +74,14 @@ public class TransactionServiceImpl implements TransactionService {
         skipped.sort(Comparator.comparingInt(SkippedRow::row));
         return new TransactionUploadResponse(imported.size(), skipped.size(),
                 boundaryDate(imported, true), boundaryDate(imported, false), skipped);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public YearMonth analysisYearMonth(long userId) {
+        return transactionRepository.findTopByUserIdOrderByOccurredAtDesc(userId)
+                .map(transaction -> YearMonth.from(transaction.getOccurredAt().atZoneSameInstant(TimeSlot.ZONE)))
+                .orElse(null);
     }
 
     @Override

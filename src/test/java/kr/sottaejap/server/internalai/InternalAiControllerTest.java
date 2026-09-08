@@ -1,15 +1,23 @@
 package kr.sottaejap.server.internalai;
 
 import kr.sottaejap.server.common.enums.EvaluationStatus;
+import kr.sottaejap.server.common.enums.Quadrant;
+import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.common.enums.RetrospectSource;
 import kr.sottaejap.server.common.enums.RetrospectStatus;
 import kr.sottaejap.server.common.enums.Satisfaction;
 import kr.sottaejap.server.common.enums.Verdict;
 import kr.sottaejap.server.common.exception.BusinessException;
 import kr.sottaejap.server.common.exception.CommonErrorCode;
+import kr.sottaejap.server.analysis.dto.InternalAnalysisResponse;
+import kr.sottaejap.server.analysis.dto.MapPointView;
+import kr.sottaejap.server.analysis.service.AnalysisService;
 import kr.sottaejap.server.common.exception.GlobalExceptionHandler;
 import kr.sottaejap.server.retrospect.dto.ClusterMemoryView;
 import kr.sottaejap.server.retrospect.dto.MemoryResponse;
+import kr.sottaejap.server.rules.aggregate.CategorySummary;
+import kr.sottaejap.server.rules.aggregate.PendingSummary;
+import kr.sottaejap.server.rules.aggregate.VerdictSummary;
 import kr.sottaejap.server.retrospect.dto.ReflectionView;
 import kr.sottaejap.server.retrospect.dto.RetrospectSaveRequest;
 import kr.sottaejap.server.retrospect.dto.RetrospectSaveResponse;
@@ -47,12 +55,15 @@ class InternalAiControllerTest {
     private TransactionService transactionService;
     @Mock
     private RetrospectService retrospectService;
+    @Mock
+    private AnalysisService analysisService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new InternalAiController(transactionService, retrospectService))
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                        new InternalAiController(transactionService, retrospectService, analysisService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -125,5 +136,24 @@ class InternalAiControllerTest {
                 .andExpect(jsonPath("$.data.clusters[0].clusterKey").value("배달|NIGHT|충동|혼자"))
                 .andExpect(jsonPath("$.data.clusters[0].verdict").value("ADJUST"))
                 .andExpect(jsonPath("$.data.recentReflections[0].id").value(5));
+    }
+    @Test
+    void get_behavior_analysis는_집계와_points를_주고_highlight는_주지_않는다() throws Exception {
+        when(analysisService.internalAnalysis(1L)).thenReturn(new InternalAnalysisResponse(
+                "2026-08",
+                List.of(new VerdictSummary(Verdict.SUSTAIN, 0, 0, 0.0),
+                        new VerdictSummary(Verdict.ADJUST, 1, 36_000, 0.036)),
+                new PendingSummary(0, 0, 0.0),
+                List.of(new CategorySummary("배달", TimeSlot.NIGHT, 12_000, 36_000, Verdict.ADJUST)),
+                List.of(new MapPointView(12L, "심야 배달", 36_000, 12_000, 3, 0.036, -0.25, 3,
+                        EvaluationStatus.RESOLVED, Quadrant.MINOR, Verdict.ADJUST, "처방", null))));
+
+        mockMvc.perform(get("/internal/ai/users/1/analysis"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.byVerdict[1].verdict").value("ADJUST"))
+                .andExpect(jsonPath("$.data.byVerdict[1].share").value(0.036))
+                .andExpect(jsonPath("$.data.byCategory[0].category").value("배달"))
+                .andExpect(jsonPath("$.data.points[0].behaviorId").value(12))
+                .andExpect(jsonPath("$.data.highlight").doesNotExist());
     }
 }
