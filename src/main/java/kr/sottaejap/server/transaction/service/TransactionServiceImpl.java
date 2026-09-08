@@ -1,6 +1,5 @@
 package kr.sottaejap.server.transaction.service;
 
-import kr.sottaejap.server.common.enums.CardIssuer;
 import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.common.exception.BusinessException;
 import kr.sottaejap.server.common.exception.CommonErrorCode;
@@ -50,7 +49,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    public TransactionUploadResponse upload(long userId, MultipartFile file, CardIssuer cardIssuer) {
+    public TransactionUploadResponse upload(long userId, MultipartFile file) {
         TransactionCsvParser.ParseResult parsed = parse(file);
 
         // 재업로드 중복은 저장 전에 걸러낸다 (04 §4). 같은 파일 안의 중복도 같은 Set이 잡는다.
@@ -67,7 +66,7 @@ public class TransactionServiceImpl implements TransactionService {
                     truncate(row.merchant(), MERCHANT_MAX_LENGTH), row.amount(),
                     truncate(category(row), CATEGORY_MAX_LENGTH),
                     truncate(row.sourceCategory(), SOURCE_CATEGORY_MAX_LENGTH),
-                    cardIssuer, importHash));
+                    importHash));
         }
         transactionRepository.saveAll(imported);
 

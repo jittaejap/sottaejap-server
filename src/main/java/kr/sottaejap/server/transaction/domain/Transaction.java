@@ -8,7 +8,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import kr.sottaejap.server.common.enums.CardIssuer;
 import kr.sottaejap.server.common.enums.TimeSlot;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -52,10 +51,6 @@ public class Transaction {
     private String sourceCategory;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "card_issuer", nullable = false)
-    private CardIssuer cardIssuer;
-
-    @Enumerated(EnumType.STRING)
     @Column(name = "time_slot", nullable = false)
     private TimeSlot timeSlot;
 
@@ -68,20 +63,19 @@ public class Transaction {
     private String importHash;
 
     private Transaction(Long userId, OffsetDateTime occurredAt, String merchant, int amount,
-                        String category, String sourceCategory, CardIssuer cardIssuer, String importHash) {
+                        String category, String sourceCategory, String importHash) {
         this.userId = userId;
         this.occurredAt = occurredAt;
         this.merchant = merchant;
         this.amount = amount;
         this.category = category;
         this.sourceCategory = sourceCategory;
-        this.cardIssuer = cardIssuer;
         this.timeSlot = TimeSlot.from(occurredAt);
         this.importHash = importHash;
     }
 
     public static Transaction of(Long userId, OffsetDateTime occurredAt, String merchant, int amount,
-                                 String category, String sourceCategory, CardIssuer cardIssuer, String importHash) {
-        return new Transaction(userId, occurredAt, merchant, amount, category, sourceCategory, cardIssuer, importHash);
+                                 String category, String sourceCategory, String importHash) {
+        return new Transaction(userId, occurredAt, merchant, amount, category, sourceCategory, importHash);
     }
 }

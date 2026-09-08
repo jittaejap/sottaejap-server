@@ -1,6 +1,5 @@
 package kr.sottaejap.server.transaction.repository;
 
-import kr.sottaejap.server.common.enums.CardIssuer;
 import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.dto.TransactionAiView;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,9 +38,9 @@ class TransactionRepositorySearchTest {
     @BeforeEach
     void saveTwoTransactions() {
         transactionRepository.save(Transaction.of(DEMO_USER_ID, NIGHT_DELIVERY, "테스트배달", 12000,
-                "배달", "배달", CardIssuer.KB, "test-hash-delivery"));
+                "배달", "배달", "test-hash-delivery"));
         transactionRepository.save(Transaction.of(DEMO_USER_ID, MORNING_CAFE, "테스트카페", 4500,
-                "카페", "카페", CardIssuer.KB, "test-hash-cafe"));
+                "카페", "카페", "test-hash-cafe"));
         transactionRepository.flush();
     }
 

@@ -1,7 +1,6 @@
 package kr.sottaejap.server.transaction.controller;
 
 import kr.sottaejap.server.auth.security.AuthenticatedUser;
-import kr.sottaejap.server.common.enums.CardIssuer;
 import kr.sottaejap.server.common.response.ApiResponse;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse;
 import kr.sottaejap.server.transaction.service.TransactionService;
@@ -24,8 +23,7 @@ public class TransactionController {
     /** 05 §2 POST /transactions/upload — 지금은 CSV만 받는다. XLSX는 INVALID_FILE_FORMAT이다. */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<TransactionUploadResponse> upload(@AuthenticationPrincipal AuthenticatedUser user,
-                                                         @RequestParam MultipartFile file,
-                                                         @RequestParam CardIssuer cardIssuer) {
-        return ApiResponse.success(transactionService.upload(user.userId(), file, cardIssuer));
+                                                         @RequestParam MultipartFile file) {
+        return ApiResponse.success(transactionService.upload(user.userId(), file));
     }
 }
