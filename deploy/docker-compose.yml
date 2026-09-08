@@ -1,0 +1,58 @@
+# EC2 운영용 구성. 로컬 개발은 레포 루트의 docker-compose.yml(DB만)을 쓴다.
+# 이미지는 EC2에서 굽지 않는다 — GitHub Actions가 구워 Docker Hub에 올린 것을 받아 쓴다.
+# 실행은 두 레포의 .github/workflows/deploy.yml 이 SSH로 직접 한다:
+#   docker compose --env-file ~/apps/.env pull <서비스> && up -d <서비스>
+#
+# 비밀값은 이 파일에 두지 않는다. EC2의 ~/apps/.env 에만 있고 커밋하지 않는다.
+name: sottaejap
+
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sottaejap
+      POSTGRES_USER: sottaejap
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?~/apps/.env 에 DB_PASSWORD 가 없다}
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sottaejap -d sottaejap"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    image: jinocc/sottaejap-server:latest
+    restart: unless-stopped
+    env_file: ../../.env
+    environment:
+      # 컨테이너끼리는 서비스 이름으로 부른다. localhost가 아니다.
+      DB_URL: jdbc:postgresql://db:5432/sottaejap
+      DB_USER: sottaejap
+      AI_BASE_URL: http://ai:8000
+    # 127.0.0.1 바인딩 — 바깥에서 직접 못 들어온다. Nginx만 통과한다.
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ai:
+    image: jinocc/sottaejap-ai:latest
+    restart: unless-stopped
+    env_file: ../../.env
+    environment:
+      SPRING_BASE_URL: http://server:8080
+      # 금융 RAG용 (07 §3). asyncpg 형식이라 jdbc: 접두사를 쓰지 않는다.
+      DATABASE_URL: postgresql://sottaejap:${DB_PASSWORD}@db:5432/sottaejap
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
