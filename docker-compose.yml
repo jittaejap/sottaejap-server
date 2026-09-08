@@ -19,8 +19,10 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-sottaejap}
       TZ: Asia/Seoul
       PGTZ: Asia/Seoul
+    # 127.0.0.1 바인딩 — 같은 Wi-Fi의 다른 사람이 닿지 못한다. 아래 잠정 비밀값과 짝이다.
+    # 브라우저·gradlew 는 호스트에서 도므로 localhost 흐름은 그대로다 (deploy 구성과 같은 방식).
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       # named volume만 쓴다. 호스트 바인드 마운트는 OS마다 경로 표기가 달라 깨진다 (07 §5-5).
       - sottaejap_db_data:/var/lib/postgresql
@@ -37,9 +39,9 @@ services:
       DB_URL: jdbc:postgresql://db:5432/sottaejap
       DB_USER: sottaejap
       DB_PASSWORD: ${DB_PASSWORD:-sottaejap}
-      # application.yml 에 잠정값이 없어 비면 기동 자체가 실패한다. 그래서 로컬 전용 값을 둔다.
-      # 값은 Base64 32바이트 이상이어야 한다. 직접 만들려면: openssl rand -base64 48
-      JWT_SECRET: ${JWT_SECRET:-bG9jYWwtZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi0xMjM0NTY3OA==}
+      JWT_SECRET: ${JWT_SECRET:?.env 에 JWT_SECRET 이 없다}
+      # 아래 두 잠정값은 application.yml 의 기본값 사본이다 — 그쪽을 바꾸면 여기도 바꾼다.
+      # 사본을 두는 이유는 .env 의 빈 값이 yml 기본값을 덮기 때문이다 (RULES_* 주석과 같은 논리).
       AUTH_ALLOWED_ORIGINS: ${AUTH_ALLOWED_ORIGINS:-http://localhost:5173}
       AI_BASE_URL: http://ai:8000
       # 아래 ai 의 INTERNAL_SHARED_SECRET 과 같은 변수를 넘긴다 — 두 값이 갈라질 수 없다.
@@ -49,10 +51,15 @@ services:
       KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       KAKAO_REDIRECT_URIS: ${KAKAO_REDIRECT_URIS:-http://localhost:5173/auth/callback}
+      # Web Push (FR-10). 여기서 넘기지 않으면 .env 에 키를 채워도 컨테이너에는 안 들어가
+      # 푸시만 조용히 꺼진다 — 원인을 찾기 어려운 종류의 침묵이다. 비어 있으면 푸시만 꺼진다.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # RULES_* 는 여기에 적지 않는다. 빈 문자열은 잠정값이 아니라 null 이라, application.yml 의
       # 잠정값을 덮어 회고 저장 첫 요청이 500(RuleParamMissingException)이 된다. 덮어쓸 때만 .env 에 키를 추가한다.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -69,8 +76,15 @@ services:
       # 금융 RAG용 (07 §3). asyncpg 형식이라 jdbc: 접두사를 쓰지 않는다.
       # DB_PASSWORD 에 @ : / # ? 를 쓰면 이 URL 이 깨진다 — 영문·숫자만 쓴다.
       DATABASE_URL: postgresql://sottaejap:${DB_PASSWORD:-sottaejap}@db:5432/sottaejap
+    # ai 이미지에는 HEALTHCHECK 가 없다. 기동 중인 컨테이너에 요청을 날리고 헤매지 않도록
+    # compose 에서만 붙인다 (ai 저장소는 건드리지 않는다). python:3.12-slim 에 curl 이 없어 python 을 쓴다.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      start_period: 30s
+      retries: 5
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
