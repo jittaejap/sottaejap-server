@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -42,6 +43,8 @@ class ClusterNamingServiceImplTest {
 
     private static final long USER_ID = 7L;
     private static final String CLUSTER_KEY = "배달|NIGHT|충동|혼자";
+    /** 저장 응답에 실리는 리프 — AI로 이름을 짓는 유일한 묶음이다. */
+    private static final long LEAF_ID = 100L;
 
     @Mock
     private BehaviorClusterRepository behaviorClusterRepository;
@@ -65,7 +68,7 @@ class ClusterNamingServiceImplTest {
         named.rename("심야 배달");
         givenUnnamed(named);
 
-        service.nameUnnamed(USER_ID);
+        service.nameUnnamed(USER_ID, LEAF_ID);
 
         verifyNoInteractions(aiClient);
         verify(behaviorClusterRepository, never()).findById(any());
@@ -77,10 +80,10 @@ class ClusterNamingServiceImplTest {
         givenUnnamed(cluster);
         when(aiClient.chat(any(ChatRequest.class))).thenReturn(reply("야식 배달"));
 
-        service.nameUnnamed(USER_ID);
+        service.nameUnnamed(USER_ID, LEAF_ID);
 
         assertEquals("야식 배달", cluster.getDisplayName());
-        verify(behaviorClusterRepository).findById(100L);
+        verify(behaviorClusterRepository).findById(LEAF_ID);
     }
 
     @Test
@@ -90,7 +93,7 @@ class ClusterNamingServiceImplTest {
         when(aiClient.chat(any(ChatRequest.class)))
                 .thenThrow(new BusinessException(CommonErrorCode.LLM_UNAVAILABLE));
 
-        service.nameUnnamed(USER_ID);
+        service.nameUnnamed(USER_ID, LEAF_ID);
 
         assertEquals("심야 배달", cluster.getDisplayName());
     }
@@ -101,7 +104,7 @@ class ClusterNamingServiceImplTest {
         givenUnnamed(cluster);
         when(aiClient.chat(any(ChatRequest.class))).thenReturn(reply("   "));
 
-        service.nameUnnamed(USER_ID);
+        service.nameUnnamed(USER_ID, LEAF_ID);
 
         assertEquals("교통 필수품", cluster.getDisplayName());
     }
@@ -112,7 +115,7 @@ class ClusterNamingServiceImplTest {
         givenUnnamed(cluster);
         when(aiClient.chat(any(ChatRequest.class))).thenReturn(reply("가나다라마바사아자차카타파"));
 
-        service.nameUnnamed(USER_ID);
+        service.nameUnnamed(USER_ID, LEAF_ID);
 
         assertEquals("가나다라마바사아자차카타", cluster.getDisplayName());
     }
@@ -122,11 +125,11 @@ class ClusterNamingServiceImplTest {
         BehaviorCluster cluster = cluster(CLUSTER_KEY);
         ReflectionTestUtils.setField(cluster, "retrospectCount", 3);
         givenUnnamed(cluster);
-        when(transactionRepository.findAllByBehaviorIdOrderByOccurredAtDesc(100L)).thenReturn(List.of(
+        when(transactionRepository.findAllByBehaviorIdOrderByOccurredAtDesc(LEAF_ID)).thenReturn(List.of(
                 tx("배달의민족"), tx("쿠팡이츠"), tx("배달의민족")));
         when(aiClient.chat(any(ChatRequest.class))).thenReturn(reply("심야 배달"));
 
-        service.nameUnnamed(USER_ID);
+        service.nameUnnamed(USER_ID, LEAF_ID);
 
         ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
         verify(aiClient).chat(captor.capture());
@@ -142,6 +145,24 @@ class ClusterNamingServiceImplTest {
         assertTrue(state.keySet().containsAll(List.of("cluster_key", "sample_merchants", "tx_count")));
     }
 
+    @Test
+    void 리프가_아닌_묶음은_AI를_부르지_않고_템플릿으로_짓는다() {
+        BehaviorCluster leaf = cluster(CLUSTER_KEY);
+        BehaviorCluster rollup = cluster("배달|NIGHT||");
+        ReflectionTestUtils.setField(rollup, "id", 200L);
+        when(behaviorClusterRepository.findAllByUserIdAndDisplayNameIsNullOrderByClusterKeyAsc(USER_ID))
+                .thenReturn(List.of(rollup, leaf));
+        when(behaviorClusterRepository.findById(LEAF_ID)).thenReturn(Optional.of(leaf));
+        when(behaviorClusterRepository.findById(200L)).thenReturn(Optional.of(rollup));
+        when(aiClient.chat(any(ChatRequest.class))).thenReturn(reply("야식 배달"));
+
+        service.nameUnnamed(USER_ID, LEAF_ID);
+
+        assertEquals("야식 배달", leaf.getDisplayName());
+        assertEquals("심야 배달", rollup.getDisplayName());
+        verify(aiClient, times(1)).chat(any(ChatRequest.class));
+    }
+
     /** 이름 확정은 AI 왕복 뒤 다시 읽은 엔티티에 한다 — 같은 객체를 돌려주는 것으로 흉내 낸다. */
     private void givenUnnamed(BehaviorCluster cluster) {
         when(behaviorClusterRepository.findAllByUserIdAndDisplayNameIsNullOrderByClusterKeyAsc(USER_ID))
@@ -151,7 +172,7 @@ class ClusterNamingServiceImplTest {
 
     private static BehaviorCluster cluster(String clusterKey) {
         BehaviorCluster cluster = BehaviorCluster.create(USER_ID, clusterKey);
-        ReflectionTestUtils.setField(cluster, "id", 100L);
+        ReflectionTestUtils.setField(cluster, "id", LEAF_ID);
         return cluster;
     }
 
@@ -162,7 +183,7 @@ class ClusterNamingServiceImplTest {
         givenUnnamed(cluster);
         when(aiClient.chat(any(ChatRequest.class))).thenReturn(reply("심야 배달"));
 
-        service.nameUnnamed(USER_ID);
+        service.nameUnnamed(USER_ID, LEAF_ID);
 
         ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
         verify(aiClient).chat(captor.capture());

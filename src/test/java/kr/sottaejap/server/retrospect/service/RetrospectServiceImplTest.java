@@ -75,7 +75,7 @@ class RetrospectServiceImplTest {
 
         InOrder order = inOrder(retrospectWriter, clusterNamingService, behaviorClusterRepository);
         order.verify(retrospectWriter).write(1L, request);
-        order.verify(clusterNamingService).nameUnnamed(1L);
+        order.verify(clusterNamingService).nameUnnamed(1L, 12L);
         order.verify(behaviorClusterRepository).findById(12L);
         assertEquals(12L, response.behaviorId());
         assertEquals("심야 배달", response.behaviorName());
@@ -91,7 +91,7 @@ class RetrospectServiceImplTest {
         BusinessException exception = assertThrows(BusinessException.class, () -> service.save(1L, request));
 
         assertEquals(CommonErrorCode.DUPLICATE_RETROSPECT, exception.getErrorCode());
-        verify(clusterNamingService, never()).nameUnnamed(anyLong());
+        verify(clusterNamingService, never()).nameUnnamed(anyLong(), anyLong());
     }
 
     @Test

@@ -25,6 +25,7 @@ import java.util.List;
 /**
  * /retrospects/* 진입점. {@link #save}는 일부러 @Transactional이 아니다 — 쓰기({@link RetrospectWriter})를
  * 커밋한 뒤 AI 명명({@link ClusterNamingService})을 부르므로 DB 트랜잭션이 AI 타임아웃(15초) 동안 열려 있지 않다 (E-64).
+ * 명명은 응답에 실리는 리프에만 AI를 쓰므로 저장 1건의 AI 왕복은 한 번, 최대 15초다.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,7 +45,7 @@ public class RetrospectServiceImpl implements RetrospectService {
     @Override
     public RetrospectSaveResponse save(long userId, RetrospectSaveRequest request) {
         Long leafId = retrospectWriter.write(userId, request);
-        clusterNamingService.nameUnnamed(userId);
+        clusterNamingService.nameUnnamed(userId, leafId);
         BehaviorCluster leaf = behaviorClusterRepository.findById(leafId)
                 .orElseThrow(() -> new IllegalStateException("재계산 직후 리프 묶음이 없다: " + leafId));
         return RetrospectSaveResponse.from(leaf);

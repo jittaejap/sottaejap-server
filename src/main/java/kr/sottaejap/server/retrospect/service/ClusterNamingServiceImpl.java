@@ -24,6 +24,10 @@ import java.util.Map;
  * <p>저장 트랜잭션이 <b>커밋된 뒤</b> 부르고, 이 메서드 자체는 트랜잭션 밖에서 돈다 — AI 왕복(최대 15초) 동안
  * DB 트랜잭션을 열어 두지 않는다. 이름 확정만 {@link TransactionTemplate}으로 짧게 감싼다.
  * displayName이 이미 있는 묶음은 다시 짓지 않는다.
+ *
+ * <p><b>AI 왕복은 저장 1건당 한 번뿐이다.</b> 저장 응답에 실리는 리프만 AI로 짓고, 같은 저장에서 함께 생긴
+ * 상위 묶음은 {@link ClusterNameTemplate}으로 채운다. 전부 AI로 지으면 저장 응답이 묶음 수 × 15초가 된다 —
+ * 리프 1건은 rollup-min-count 미만이라 상위 묶음이 항상 같이 생기므로 첫 저장부터 왕복 2회다.
  */
 @Service
 public class ClusterNamingServiceImpl implements ClusterNamingService {
@@ -49,14 +53,16 @@ public class ClusterNamingServiceImpl implements ClusterNamingService {
     }
 
     @Override
-    public void nameUnnamed(long userId) {
+    public void nameUnnamed(long userId, long aiClusterId) {
         List<BehaviorCluster> unnamed =
                 behaviorClusterRepository.findAllByUserIdAndDisplayNameIsNullOrderByClusterKeyAsc(userId);
         for (BehaviorCluster cluster : unnamed) {
             if (cluster.hasDisplayName()) {
                 continue;
             }
-            String name = resolveName(userId, cluster);
+            String name = cluster.getId() == aiClusterId
+                    ? resolveName(userId, cluster)
+                    : ClusterNameTemplate.nameFor(cluster.getClusterKey());
             // AI 왕복 동안 재계산이 같은 행을 바꿨을 수 있다 — 떼어진 엔티티를 merge하지 않고 다시 읽어 이름만 바꾼다
             transactionTemplate.executeWithoutResult(status ->
                     behaviorClusterRepository.findById(cluster.getId())
