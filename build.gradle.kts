@@ -11,6 +11,7 @@ description = "소때잡 서버 — 인증 · 저장/조회 API · 파싱 · 규
 // 버전 정본은 sottaejap-docs/07_기술스택_레포구성.md §1 (v1.5). Boot BOM이 관리하는 것은 적지 않는다.
 val springdocVersion = "3.1.0"
 val jjwtVersion = "0.13.0"
+val poiVersion = "5.5.1"
 
 java {
     toolchain {
@@ -35,6 +36,9 @@ dependencies {
 
     // API 문서 — Boot 4.1은 springdoc 3.1.x (07 §1 · E-35)
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
+
+    // XLSX 업로드 — 05 §2. Boot 미관리
+    implementation("org.apache.poi:poi-ooxml:$poiVersion")
 
     // JWT — Boot 미관리
     implementation("io.jsonwebtoken:jjwt-api:$jjwtVersion")

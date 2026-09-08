@@ -2,8 +2,16 @@ package kr.sottaejap.server.transaction.parser;
 
 import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse.SkippedRow;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.DateUtil;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
@@ -11,6 +19,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -21,7 +30,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * 카드사 CSV에서 3사 공통 컬럼(거래일시 · 가맹점 · 금액)만 읽는다 (04 §4).
+ * 카드사 내역 파일(CSV · XLSX)에서 3사 공통 컬럼(거래일시 · 가맹점 · 금액)만 읽는다 (04 §4 · 05 §2).
  *
  * <p><b>카드사를 가리지 않는다.</b> 카드사별 매핑표를 두지 않고 머리글의 <b>키워드 포함</b>으로 컬럼을 찾는다.
  * KB·하나·신한이 각각 "이용일시" · "거래일시" · "이용하신곳"처럼 달라도 같은 코드로 읽힌다.
@@ -30,7 +39,7 @@ import java.util.stream.Stream;
  * <p>계산·판정은 하지 않는다. 시간대 분류만 {@code TimeSlot.from}에 맡긴다.
  */
 @Component
-public class TransactionCsvParser {
+public class TransactionFileParser {
 
     /** UTF-8 BOM. 눈에 보이지 않는 글자라 이름을 붙여 둔다 — 지우면 모든 파일의 첫 글자가 잘린다. */
     private static final char BOM = '﻿';
@@ -117,6 +126,11 @@ public class TransactionCsvParser {
             DateTimeFormatter.ofPattern("yyyy-M-d H:m"),
     };
     private static final DateTimeFormatter DATE_ONLY_FORMAT = DateTimeFormatter.ofPattern("yyyy-M-d");
+
+    /** 엑셀이 시각만 담은 칸에 쓰는 기준일(1899-12-31)의 해. 이 해가 나오면 날짜가 아니라 시각이다. */
+    private static final int EXCEL_EPOCH_YEAR = 1899;
+    private static final DateTimeFormatter DATE_TIME_CELL = DateTimeFormatter.ofPattern("yyyy-M-d H:m:s");
+    private static final DateTimeFormatter TIME_ONLY_CELL = DateTimeFormatter.ofPattern("H:m:s");
     private static final Pattern NUMBER = Pattern.compile("-?\\d+");
 
     /**
@@ -163,10 +177,27 @@ public class TransactionCsvParser {
     }
 
     /**
+     * CSV를 읽는다. 인코딩 감지와 RFC 4180 자르기는 여기서만 한다.
+     *
      * @throws IllegalArgumentException 머리글을 찾지 못한 경우 — 호출자가 PARSE_FAILED로 바꾼다.
      */
-    public ParseResult parse(byte[] content) {
-        List<RawRow> records = readRecords(decode(content));
+    public ParseResult parseCsv(byte[] content) {
+        return parseRecords(readRecords(decode(content)));
+    }
+
+    /**
+     * XLSX를 읽는다 (05 §2). 카드사 웹에서 그대로 내려받은 엑셀 파일이 들어온다.
+     *
+     * <p>머리글 탐색부터는 CSV와 같은 코드를 탄다. 서식 판정·컬럼 매핑·행 해석이 갈라지면
+     * 같은 파일을 CSV로 냈을 때와 XLSX로 냈을 때 결과가 달라진다.
+     *
+     * @throws IllegalArgumentException 파일을 열 수 없거나 머리글을 찾지 못한 경우
+     */
+    public ParseResult parseXlsx(byte[] content) {
+        return parseRecords(readSheet(content));
+    }
+
+    private ParseResult parseRecords(List<RawRow> records) {
         int headerIndex = findHeaderIndex(records);
         if (headerIndex < 0) {
             throw new IllegalArgumentException("거래일시·금액 컬럼이 있는 머리글을 찾지 못했습니다.");
@@ -355,6 +386,71 @@ public class TransactionCsvParser {
             records.add(new RawRow(recordStart, List.copyOf(cells)));
         }
         return records;
+    }
+
+    /**
+     * XLSX 첫 시트를 CSV와 같은 모양의 레코드로 바꾼다. 시트가 여럿이면 첫 장만 본다 —
+     * 카드사 내려받기 파일은 내역이 첫 장이고, 나머지는 안내·약관이다.
+     *
+     * <p>셀을 문자열로 되돌려 CSV와 같은 해석기에 넘긴다. 날짜·시각 셀은 <b>표시 서식이 아니라 셀이 든
+     * 실제 값</b>으로 읽는다 — 같은 거래를 `2026.08.25` · `25/08/26` · `20260825`로 보여주는 파일들이
+     * 서식대로 읽으면 제각기 다르게 파싱된다.
+     */
+    private static List<RawRow> readSheet(byte[] content) {
+        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(content))) {
+            List<RawRow> records = new ArrayList<>();
+            // 물리적 줄 번호를 CSV와 맞춘다 — 사용자가 건너뛴 행을 엑셀에서 찾을 때 보는 행 번호다.
+            for (Row row : workbook.getSheetAt(0)) {
+                records.add(new RawRow(row.getRowNum() + 1, cellsOf(row)));
+            }
+            return records;
+        } catch (IOException | RuntimeException cannotOpen) {
+            // POI는 형식이 어긋나면 자기 런타임 예외를 던진다. 호출자가 PARSE_FAILED로 바꾸도록 맞춰 준다.
+            throw new IllegalArgumentException("XLSX 파일을 열지 못했습니다.", cannotOpen);
+        }
+    }
+
+    private static List<String> cellsOf(Row row) {
+        List<String> cells = new ArrayList<>();
+        // 빈 행은 getLastCellNum()이 -1이라 그대로 빈 목록이 된다 — isNoise가 걸러낸다.
+        for (int i = 0; i < row.getLastCellNum(); i++) {
+            cells.add(textOf(row.getCell(i)));
+        }
+        return List.copyOf(cells);
+    }
+
+    private static String textOf(Cell cell) {
+        if (cell == null) {
+            return "";
+        }
+        // 수식 칸은 다시 계산하지 않고 엑셀이 저장해 둔 결과를 쓴다. 내역 파일의 수식은 합계 행뿐이다.
+        CellType type = cell.getCellType() == CellType.FORMULA
+                ? cell.getCachedFormulaResultType()
+                : cell.getCellType();
+        return switch (type) {
+            case STRING -> cell.getStringCellValue().trim();
+            case NUMERIC -> numericText(cell);
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            default -> "";
+        };
+    }
+
+    private static String numericText(Cell cell) {
+        if (DateUtil.isCellDateFormatted(cell)) {
+            LocalDateTime value = cell.getLocalDateTimeCellValue();
+            if (value.getYear() <= EXCEL_EPOCH_YEAR) {
+                // 시각만 든 칸 — 신한 이용내역서의 `이용시간`. 날짜 칸과 합쳐져야 거래 시각이 된다.
+                return value.format(TIME_ONLY_CELL);
+            }
+            // 자정은 시각이 아니라 "시각 없음"으로 본다. 엑셀은 날짜만 든 칸을 00:00:00으로 저장하는데,
+            // 이걸 자정 거래로 읽으면 실제로는 시간 정보가 없는 파일이 통째로 NIGHT로 적재된다 (04 §4).
+            return value.toLocalTime().equals(LocalTime.MIDNIGHT)
+                    ? value.format(DATE_ONLY_FORMAT)
+                    : value.format(DATE_TIME_CELL);
+        }
+        // `12000.0`처럼 소수점이 붙으면 금액·시각 해석이 흔들린다. 정수는 정수로 적는다.
+        double number = cell.getNumericCellValue();
+        return number == Math.rint(number) ? String.valueOf((long) number) : String.valueOf(number);
     }
 
     /**

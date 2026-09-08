@@ -7,8 +7,8 @@ import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.dto.TransactionAiView;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse.SkippedRow;
-import kr.sottaejap.server.transaction.parser.TransactionCsvParser;
-import kr.sottaejap.server.transaction.parser.TransactionCsvParser.ParsedRow;
+import kr.sottaejap.server.transaction.parser.TransactionFileParser;
+import kr.sottaejap.server.transaction.parser.TransactionFileParser.ParsedRow;
 import kr.sottaejap.server.transaction.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -45,12 +45,12 @@ public class TransactionServiceImpl implements TransactionService {
     private static final int SOURCE_CATEGORY_MAX_LENGTH = 100;
 
     private final TransactionRepository transactionRepository;
-    private final TransactionCsvParser parser;
+    private final TransactionFileParser parser;
 
     @Override
     @Transactional
     public TransactionUploadResponse upload(long userId, MultipartFile file) {
-        TransactionCsvParser.ParseResult parsed = parse(file);
+        TransactionFileParser.ParseResult parsed = parse(file);
 
         // 재업로드 중복은 저장 전에 걸러낸다 (04 §4). 같은 파일 안의 중복도 같은 Set이 잡는다.
         Set<String> knownHashes = new HashSet<>(transactionRepository.findImportHashesByUserId(userId));
@@ -91,13 +91,17 @@ public class TransactionServiceImpl implements TransactionService {
                 .toList();
     }
 
-    private TransactionCsvParser.ParseResult parse(MultipartFile file) {
+    /** 05 §2는 CSV와 XLSX를 받는다. 확장자로 읽는 방법만 고르고, 서식은 파서가 머리글로 가른다 (04 §4). */
+    private TransactionFileParser.ParseResult parse(MultipartFile file) {
         String name = file.getOriginalFilename();
-        if (name == null || !name.toLowerCase(Locale.ROOT).endsWith(".csv")) {
+        String lowerName = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        boolean xlsx = lowerName.endsWith(".xlsx");
+        if (!xlsx && !lowerName.endsWith(".csv")) {
             throw new BusinessException(CommonErrorCode.INVALID_FILE_FORMAT);
         }
         try {
-            return parser.parse(file.getBytes());
+            byte[] content = file.getBytes();
+            return xlsx ? parser.parseXlsx(content) : parser.parseCsv(content);
         } catch (IOException | IllegalArgumentException cannotRead) {
             throw new BusinessException(CommonErrorCode.PARSE_FAILED);
         }

@@ -2,14 +2,26 @@ package kr.sottaejap.server.transaction.parser;
 
 import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse.SkippedRow;
-import kr.sottaejap.server.transaction.parser.TransactionCsvParser.ParseResult;
-import kr.sottaejap.server.transaction.parser.TransactionCsvParser.ParsedRow;
+import kr.sottaejap.server.transaction.parser.TransactionFileParser.ParseResult;
+import kr.sottaejap.server.transaction.parser.TransactionFileParser.ParsedRow;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.DateUtil;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -22,17 +34,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>서식 3종 픽스처는 실제로 받은 파일의 머리글과 꼬리를 <b>글자 그대로</b> 옮기고 가맹점명 ·
  * 카드번호 · 계좌번호만 익명화한 것이다 (05 §5). 추측한 머리글로는 이 파서가 무엇을 못 읽었는지 드러나지 않는다.
  */
-class TransactionCsvParserTest {
+class TransactionFileParserTest {
 
-    private final TransactionCsvParser parser = new TransactionCsvParser();
+    private final TransactionFileParser parser = new TransactionFileParser();
 
     @Test
     void 카드사마다_다른_헤더를_키워드로_찾는다() {
-        ParseResult kb = parser.parse(utf8("""
+        ParseResult kb = parser.parseCsv(utf8("""
                 이용일시,이용하신곳,이용금액,업종
                 2026.08.25 20:22:30,○○마트,"12,000",유통
                 """));
-        ParseResult shinhan = parser.parse(utf8("""
+        ParseResult shinhan = parser.parseCsv(utf8("""
                 거래일자,가맹점명,거래금액
                 2026-08-25 20:22,○○마트,12000
                 """));
@@ -52,7 +64,7 @@ class TransactionCsvParserTest {
 
     @Test
     void 실제_카드내역_머리글을_읽는다() {
-        ParseResult result = parser.parse(utf8(REAL_CARD_HEADER + """
+        ParseResult result = parser.parseCsv(utf8(REAL_CARD_HEADER + """
                 
                 2026.05.30 17:17,체크,본인000*,○○빵집,,37373238,17050.0,결제확정,일시불,,,,
                 2026.04.10 21:49,체크,본인000*,○○쇼핑,,29414627,-10320.0,거래취소,일시불,,,,취소
@@ -75,7 +87,7 @@ class TransactionCsvParserTest {
      */
     @Test
     void 머리글이_여러_줄이고_날짜와_시각이_나뉘어_있어도_읽는다() {
-        ParseResult result = parser.parse(utf8("""
+        ParseResult result = parser.parseCsv(utf8("""
                 ,,,,,,,,,,,,,
                 카드이용내역 조회,,,,,,,,,,,,,
                 [조회기간: 2026.06.04 ~ 2026.09.03],,,,,,,,,,,,,
@@ -107,7 +119,7 @@ class TransactionCsvParserTest {
 
     @Test
     void 통장내역은_적요가_아니라_보낸분받는분을_가맹점으로_읽는다() {
-        ParseResult result = parser.parse(utf8("""
+        ParseResult result = parser.parseCsv(utf8("""
                 조회기간,2026.03.04 ~ 2026.09.03,,,,,,
                 계좌번호,000000-00-000000,,,총잔액,,,
                 예금종류,○○우대통장,,,출금가능금액,,,
@@ -127,7 +139,7 @@ class TransactionCsvParserTest {
 
     @Test
     void 통장에서_카드_결제가_아닌_거래는_건너뛴다() {
-        ParseResult result = parser.parse(utf8(REAL_BANK_HEADER + """
+        ParseResult result = parser.parseCsv(utf8(REAL_BANK_HEADER + """
                 
                 2026.09.02 14:24:56,체크카드,○○커피,,"10,000",0,KB카드,
                 2026.09.02 11:01:15,오픈뱅킹출금,토스 홍길동,,"14,000",0,스타뱅,
@@ -149,7 +161,7 @@ class TransactionCsvParserTest {
 
     @Test
     void 머리글_앞의_제목줄을_건너뛴다() {
-        ParseResult result = parser.parse(utf8("""
+        ParseResult result = parser.parseCsv(utf8("""
                 KB국민카드 이용대금 조회
                 조회기간 : 2026.03.03 ~ 2026.09.03
 
@@ -163,7 +175,7 @@ class TransactionCsvParserTest {
 
     @Test
     void 따옴표_안의_쉼표와_줄바꿈은_가맹점명으로_남는다() {
-        ParseResult result = parser.parse(utf8("""
+        ParseResult result = parser.parseCsv(utf8("""
                 거래일시,가맹점명,금액
                 2026-08-25 20:22,"커피,빵집",4500
                 2026-08-26 20:22,"윗줄
@@ -178,7 +190,7 @@ class TransactionCsvParserTest {
 
     @Test
     void 취소_환불과_시간_없는_행은_사유와_함께_건너뛴다() {
-        ParseResult result = parser.parse(utf8("""
+        ParseResult result = parser.parseCsv(utf8("""
                 거래일시,가맹점명,금액
                 2026-08-25 20:22,○○마트,-12000
                 2026-08-26,○○마트,12000
@@ -200,7 +212,7 @@ class TransactionCsvParserTest {
                 2026-08-25 20:22,○○마트,12000
                 """.getBytes(Charset.forName("MS949"));
 
-        ParseResult result = parser.parse(eucKr);
+        ParseResult result = parser.parseCsv(eucKr);
 
         assertEquals("○○마트", result.rows().get(0).merchant());
     }
@@ -212,7 +224,7 @@ class TransactionCsvParserTest {
                 2026-08-25 20:22,○○마트,12000
                 """).getBytes(StandardCharsets.UTF_8);
 
-        ParseResult result = parser.parse(withBom);
+        ParseResult result = parser.parseCsv(withBom);
 
         assertEquals(1, result.rows().size());
         assertEquals("○○마트", result.rows().get(0).merchant());
@@ -220,7 +232,7 @@ class TransactionCsvParserTest {
 
     @Test
     void CRLF로_저장된_파일도_줄_번호가_어긋나지_않는다() {
-        ParseResult result = parser.parse(utf8("거래일시,가맹점명,금액\r\n2026-08-25 20:22,○○마트,12000\r\n"));
+        ParseResult result = parser.parseCsv(utf8("거래일시,가맹점명,금액\r\n2026-08-25 20:22,○○마트,12000\r\n"));
 
         assertEquals(1, result.rows().size());
         assertEquals(2, result.rows().get(0).line());
@@ -228,7 +240,7 @@ class TransactionCsvParserTest {
 
     @Test
     void 머리글을_못_찾으면_예외로_알린다() {
-        assertThrows(IllegalArgumentException.class, () -> parser.parse(utf8("아무 내용,없음\n1,2\n")));
+        assertThrows(IllegalArgumentException.class, () -> parser.parseCsv(utf8("아무 내용,없음\n1,2\n")));
     }
 
     @Test
@@ -242,8 +254,8 @@ class TransactionCsvParserTest {
 
     @Test
     void 같은_거래는_같은_시각으로_읽혀_중복_판별에_쓰인다() {
-        ParsedRow first = parser.parse(utf8("거래일시,가맹점명,금액\n2026.08.25 20:22:00,○○마트,12000\n")).rows().get(0);
-        ParsedRow second = parser.parse(utf8("이용일시,이용하신곳,이용금액\n2026-08-25 20:22,○○마트,\"12,000\"\n")).rows().get(0);
+        ParsedRow first = parser.parseCsv(utf8("거래일시,가맹점명,금액\n2026.08.25 20:22:00,○○마트,12000\n")).rows().get(0);
+        ParsedRow second = parser.parseCsv(utf8("이용일시,이용하신곳,이용금액\n2026-08-25 20:22,○○마트,\"12,000\"\n")).rows().get(0);
 
         assertEquals(first.occurredAt().toInstant(), second.occurredAt().toInstant());
         assertTrue(first.occurredAt().toString().endsWith("+09:00"));
@@ -251,11 +263,115 @@ class TransactionCsvParserTest {
 
     private TimeSlot slotAt(String dateTime) {
         OffsetDateTime occurredAt =
-                parser.parse(utf8("거래일시,가맹점명,금액\n" + dateTime + ",○○마트,12000\n")).rows().get(0).occurredAt();
+                parser.parseCsv(utf8("거래일시,가맹점명,금액\n" + dateTime + ",○○마트,12000\n")).rows().get(0).occurredAt();
         return TimeSlot.from(occurredAt);
+    }
+
+    @Test
+    void XLSX도_CSV와_같은_규칙으로_읽힌다() {
+        byte[] xlsx = workbook(sheet -> {
+            header(sheet, 0, "이용일시", "이용하신곳", "이용금액", "업종");
+            Row row = sheet.createRow(1);
+            dateTimeCell(row, 0, LocalDateTime.of(2026, 8, 25, 20, 22, 30));
+            row.createCell(1).setCellValue("○○마트");
+            row.createCell(2).setCellValue(12000);
+            row.createCell(3).setCellValue("유통");
+        });
+
+        ParseResult result = parser.parseXlsx(xlsx);
+
+        assertEquals(1, result.rows().size());
+        ParsedRow first = result.rows().get(0);
+        assertEquals(OffsetDateTime.parse("2026-08-25T20:22:30+09:00"), first.occurredAt());
+        assertEquals("○○마트", first.merchant());
+        assertEquals(12000, first.amount());
+        assertEquals("유통", first.sourceCategory());
+        // 엑셀 2행 = 파일에서 사용자가 보는 행 번호.
+        assertEquals(2, first.line());
+    }
+
+    @Test
+    void XLSX의_날짜와_시각이_다른_칸에_있어도_붙여_읽는다() {
+        byte[] xlsx = workbook(sheet -> {
+            header(sheet, 0, "이용일", "이용시간", "가맹점명", "이용금액");
+            Row row = sheet.createRow(1);
+            // 날짜만 든 칸은 엑셀이 00:00:00으로 저장한다. 자정 거래로 읽으면 안 된다.
+            dateCell(row, 0, LocalDateTime.of(2026, 9, 3, 0, 0));
+            timeCell(row, 1, "18:15:08");
+            row.createCell(2).setCellValue("○○커피");
+            row.createCell(3).setCellValue(4500);
+        });
+
+        ParseResult result = parser.parseXlsx(xlsx);
+
+        assertEquals(1, result.rows().size());
+        assertEquals(OffsetDateTime.parse("2026-09-03T18:15:08+09:00"), result.rows().get(0).occurredAt());
+    }
+
+    @Test
+    void XLSX에_시각이_전혀_없으면_04_4대로_건너뛴다() {
+        byte[] xlsx = workbook(sheet -> {
+            header(sheet, 0, "이용일", "가맹점명", "이용금액");
+            Row row = sheet.createRow(1);
+            dateCell(row, 0, LocalDateTime.of(2026, 9, 3, 0, 0));
+            row.createCell(1).setCellValue("○○커피");
+            row.createCell(2).setCellValue(4500);
+        });
+
+        ParseResult result = parser.parseXlsx(xlsx);
+
+        assertTrue(result.rows().isEmpty());
+        assertEquals(List.of(new SkippedRow(2, "시간 정보 없음")), result.skipped());
+    }
+
+    @Test
+    void XLSX가_아닌_바이트는_예외로_알린다() {
+        assertThrows(IllegalArgumentException.class,
+                () -> parser.parseXlsx(utf8("거래일시,가맹점명,금액\n2026-08-25 20:22,○○마트,12000\n")));
     }
 
     private static byte[] utf8(String csv) {
         return csv.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** 픽스처를 파일로 두지 않고 여기서 만든다 — 셀 종류(문자·숫자·날짜)가 코드에 드러나야 한다. */
+    private static byte[] workbook(Consumer<Sheet> fill) {
+        try (Workbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+            fill.accept(workbook.createSheet("이용내역"));
+            workbook.write(bytes);
+            return bytes.toByteArray();
+        } catch (IOException cannotWrite) {
+            throw new UncheckedIOException(cannotWrite);
+        }
+    }
+
+    private static void header(Sheet sheet, int rowIndex, String... names) {
+        Row row = sheet.createRow(rowIndex);
+        for (int i = 0; i < names.length; i++) {
+            row.createCell(i).setCellValue(names[i]);
+        }
+    }
+
+    private static void dateTimeCell(Row row, int column, LocalDateTime value) {
+        styledCell(row, column, "yyyy-mm-dd hh:mm:ss").setCellValue(value);
+    }
+
+    private static void dateCell(Row row, int column, LocalDateTime value) {
+        styledCell(row, column, "yyyy-mm-dd").setCellValue(value);
+    }
+
+    /** 시각만 든 칸은 엑셀에서 하루의 비율(0~1)이다. 신한 이용내역서의 `이용시간`이 이 모양이다. */
+    private static void timeCell(Row row, int column, String time) {
+        styledCell(row, column, "hh:mm:ss").setCellValue(DateUtil.convertTime(time));
+    }
+
+    private static Cell styledCell(Row row, int column, String format) {
+        Workbook workbook = row.getSheet().getWorkbook();
+        CellStyle style = workbook.createCellStyle();
+        style.setDataFormat(workbook.createDataFormat().getFormat(format));
+        Cell cell = row.createCell(column);
+        cell.setCellStyle(style);
+        return cell;
     }
 }

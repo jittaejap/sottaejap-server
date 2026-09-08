@@ -20,7 +20,7 @@ public class TransactionController {
 
     private final TransactionService transactionService;
 
-    /** 05 §2 POST /transactions/upload — 지금은 CSV만 받는다. XLSX는 INVALID_FILE_FORMAT이다. */
+    /** 05 §2 POST /transactions/upload — CSV와 XLSX를 받는다. 그 밖의 확장자는 INVALID_FILE_FORMAT이다. */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<TransactionUploadResponse> upload(@AuthenticationPrincipal AuthenticatedUser user,
                                                          @RequestParam MultipartFile file) {
