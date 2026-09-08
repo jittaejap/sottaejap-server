@@ -105,6 +105,9 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void subscribeToPush(long userId, PushSubscriptionRequest request) {
         // 같은 브라우저가 키를 새로 만들어 다시 구독하는 일이 흔하다. endpoint가 같으면 행을 늘리지 않는다.
+        // endpoint는 V5에서 UNIQUE라 다른 사용자로 새 행을 만들 수 없다 — 같은 브라우저에 다른 계정이
+        // 로그인한 경우이므로 소유자를 옮긴다. 남의 endpoint를 아는 사람은 그 기기로 자기 알림을
+        // 보내게 만들 수 있지만, endpoint 자체가 브라우저와 서버만 아는 값이라 여기서 더 막지 않는다.
         pushSubscriptionRepository.findByEndpoint(request.endpoint())
                 .ifPresentOrElse(
                         existing -> existing.replaceKeys(userId, request.keys().p256dh(), request.keys().auth()),

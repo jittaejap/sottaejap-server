@@ -40,7 +40,7 @@ public class Notification {
     @Column(name = "ref_id")
     private Long refId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "text")
     private String message;
 
     @Column(name = "is_read", nullable = false)

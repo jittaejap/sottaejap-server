@@ -15,9 +15,11 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 
 /**
- * 회고 대화 한 줄. 스키마 정본은 db/migration/V6__chat_messages.sql이다.
+ * 금융 Q&A 대화 한 줄. 스키마 정본은 db/migration/V6__chat_messages.sql이다.
  *
  * <p>AI에 보내는 `recent_messages`의 재료다. 계산도 판정도 하지 않고 오간 말만 그대로 남긴다.
+ *
+ * <p>회고 대화는 여기 쌓이지 않는다 — 클라이언트가 들고 다닌다 (E-67 · E-63).
  */
 @Entity
 @Table(name = "chat_messages")
@@ -49,7 +51,7 @@ public class ChatMessage {
     @Column(nullable = false)
     private Role role;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "text")
     private String content;
 
     @Column(name = "created_at", nullable = false)
