@@ -16,6 +16,7 @@ import kr.sottaejap.server.rules.cluster.ClusterRecomputeResult;
 import kr.sottaejap.server.rules.cluster.RetrospectedTransaction;
 import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.repository.TransactionRepository;
+import kr.sottaejap.server.transaction.service.TransactionService;
 import kr.sottaejap.server.user.domain.User;
 import kr.sottaejap.server.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -44,16 +45,16 @@ public class ClusterRecomputeServiceImpl implements ClusterRecomputeService {
     private final RetrospectRepository retrospectRepository;
     private final BehaviorClusterRepository behaviorClusterRepository;
     private final TransactionRepository transactionRepository;
+    private final TransactionService transactionService;
     private final UserRepository userRepository;
     private final RuleParams ruleParams;
 
     @Override
     @Transactional
     public List<BehaviorCluster> recomputeAll(long userId) {
-        // analysisYearMonth = 사용자의 최근 거래월 (E-60). 거래가 없으면 회고도 있을 수 없다.
-        YearMonth analysisYearMonth = transactionRepository.findTopByUserIdOrderByOccurredAtDesc(userId)
-                .map(ClusterRecomputeServiceImpl::yearMonthOf)
-                .orElse(null);
+        // analysisYearMonth = 사용자의 최근 거래월 (E-60 · 산출은 TransactionService 하나 — E-78).
+        // 거래가 없으면 회고도 있을 수 없다.
+        YearMonth analysisYearMonth = transactionService.analysisYearMonth(userId);
         if (analysisYearMonth == null) {
             return List.of();
         }
