@@ -37,9 +37,14 @@ class HighlightTemplateTest {
         assertEquals(HighlightTemplate.NO_MONTH_ACTIVITY, HighlightTemplate.highlightFor(summary));
     }
 
-    /** 보류만 있는 사용자도 회고는 한 사용자다 (E-73 — 보류는 판정이 없을 뿐 유효 묶음이다). */
+    /**
+     * 보류만 있는 사용자도 회고는 한 사용자다 (E-73 — 보류는 판정이 없을 뿐 유효 묶음이다).
+     *
+     * <p>여기서 막는 회귀는 {@code NO_RETROSPECT}("아직 돌아본 소비가 없어요")다 — 판정 2행이 모두 0이라고
+     * 유효 묶음이 0인 것은 아니다.
+     */
     @Test
-    void 보류_묶음만_있어도_회고가_없다고_말하지_않는다() {
+    void 보류_묶음만_있어도_이번_달_회고를_권한다() {
         // 보류 금액은 카테고리 합계에 들어가므로(E-73) byCategory가 비려면 보류 합계도 0이어야 한다.
         AnalysisSummary summary = new AnalysisSummary(
                 List.of(new VerdictSummary(Verdict.SUSTAIN, 0, 0, null),
@@ -47,9 +52,7 @@ class HighlightTemplateTest {
                 new PendingSummary(2, 0, null),
                 List.of());
 
-        String highlight = HighlightTemplate.highlightFor(summary);
-        assertTrue(!HighlightTemplate.NO_RETROSPECT.equals(highlight), highlight);
-        assertEquals(HighlightTemplate.NO_MONTH_ACTIVITY, highlight);
+        assertEquals(HighlightTemplate.NO_MONTH_ACTIVITY, HighlightTemplate.highlightFor(summary));
     }
 
     @Test
