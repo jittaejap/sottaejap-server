@@ -11,6 +11,8 @@ import kr.sottaejap.server.retrospect.domain.Retrospect;
 import kr.sottaejap.server.retrospect.dto.CandidateView;
 import kr.sottaejap.server.retrospect.repository.RetrospectRepository;
 import kr.sottaejap.server.retrospect.repository.RetrospectWithTransaction;
+import kr.sottaejap.server.rules.RuleParamMissingException;
+import kr.sottaejap.server.rules.RuleParams;
 import kr.sottaejap.server.rules.RuleParamsFixture;
 import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.repository.TransactionRepository;
@@ -213,6 +215,26 @@ class CandidateServiceImplTest {
                 () -> candidateService.findCandidates(USER_ID, 1, null, null));
 
         assertEquals(CommonErrorCode.NOT_FOUND, exception.getErrorCode());
+    }
+
+    @Test
+    void 사용자_설정이_없는데_sensitivity_standard가_null이면_계산을_거부한다() {
+        RuleParams sample = RuleParamsFixture.sample();
+        CandidateServiceImpl service = new CandidateServiceImpl(transactionRepository, retrospectRepository,
+                userRepository,
+                new RuleParams(sample.shrinkageK(), sample.rollupMinCount(), sample.pendingMinCount(),
+                        sample.axisXBoundary(), sample.axisYBoundary(), sample.chatWindowDays(),
+                        new RuleParams.Sensitivity(3.0, null, 1.5), sample.candidate(), sample.cluster()),
+                Clock.fixed(Instant.parse("2026-08-24T00:00:00Z"), TimeSlot.ZONE));
+        givenUser(user(null));
+        givenBaseline(List.of());
+        givenRetrospects(List.of());
+        Transaction target = transaction(1L, "2026-08-20T12:00:00Z", "편의점", 3_000, "쇼핑");
+
+        RuleParamMissingException exception = assertThrows(RuleParamMissingException.class,
+                () -> service.reasonCodeFor(USER_ID, target));
+
+        assertTrue(exception.getMessage().contains("rules.sensitivity.standard"));
     }
 
     /** 대상과 같은 (기타, NIGHT) 거래 5건 + 대상 자신. 자신을 빼야 표본이 정확히 outlier-min-samples가 된다. */

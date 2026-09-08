@@ -63,7 +63,8 @@ public class CandidateServiceImpl implements CandidateService {
     @Transactional(readOnly = true)
     public List<CandidateView> findCandidates(long userId, int limit, LocalDate from, LocalDate to) {
         Baseline baseline = loadBaseline(userId);
-        int size = Math.min(Math.max(limit, 1), MAX_LIMIT);
+        // limit 1 미만은 RetrospectServiceImpl.candidates가 이미 400으로 걸렀다. 상한만 조용히 자른다 (05 §2).
+        int size = Math.min(limit, MAX_LIMIT);
 
         List<Transaction> transactions = transactionRepository.findCandidates(
                 userId, startOf(from), toExclusive(baseline.user(), to), PageRequest.of(0, MAX_LIMIT));
@@ -151,7 +152,11 @@ public class CandidateServiceImpl implements CandidateService {
         if (outlierThreshold != null) {
             return outlierThreshold;
         }
-        return RuleParams.require(params.sensitivity(), "rules.sensitivity").standard();
+        // 값만 빈 RULES_SENSITIVITY_STANDARD=는 null을 바인딩한다. 여기서 막지 않으면 CandidateRule이
+        // 예외 없이 false를 돌려 TIMESLOT_OUTLIER 후보가 통째로 사라진다.
+        return RuleParams.require(
+                RuleParams.require(params.sensitivity(), "rules.sensitivity").standard(),
+                "rules.sensitivity.standard");
     }
 
     /**
