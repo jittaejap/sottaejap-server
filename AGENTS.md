@@ -54,6 +54,14 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 - AI의 `/chat`도 `INTERNAL_SHARED_SECRET`이 비어 있거나 헤더가 다르면 **모든 요청을 401**로 거부합니다 (E-37). 양쪽 값이 같아야 ai-ping이 200입니다.
   AI 레포는 GitHub `jittaejap/sottaejap-ai`로 rename됐습니다 (E-42).
 
+## 회고 저장은 AI 호출을 트랜잭션 밖에서 한다 (E-64)
+
+- `POST /retrospects`는 `RetrospectWriter`(@Transactional — 검증 · insert · 사용자 전체 재계산)를 **커밋한 뒤** `ClusterNamingService`가
+  AI `CLUSTER_NAMING`을 부릅니다. `RetrospectServiceImpl.save`에 `@Transactional`을 붙이면 AI 타임아웃(15초) 동안 DB 잠금을 잡습니다 — 붙이지 마십시오.
+- 재계산은 매번 **사용자 전체 묶음**입니다 (E-61). 결과에서 빠진 묶음은 지우지 않고 `markEmpty()`로 값만 비웁니다 — 회고 수 0인 묶음은 지도·메모리에서 뺍니다.
+- 후보 `reason`은 Spring 템플릿(`ReasonTemplate`)이고 AI `app/ai/fallback.py`와 문장이 같아야 합니다 (E-62). `POST /retrospects/chat`은 회고 행을 만들지 않습니다 (E-63).
+- `skip`(05 #9) 엔드포인트는 없습니다 (E-65). 규칙 파라미터는 `application.yml` 잠정값이 기본이고 `RULES_*`로 덮어씁니다 (E-57).
+
 ## 응답 계약 (05 §0)
 
 - 모든 JSON은 `ApiResponse` 봉투 `{ success, data | error{code,message} }`입니다. 실패는
