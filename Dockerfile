@@ -14,6 +14,10 @@ RUN ./gradlew bootJar --no-daemon -x test
 
 # ---- Runtime stage ----
 FROM eclipse-temurin:21-jre
+# compose 헬스체크가 Spring Actuator를 확인할 때 쓰는 최소 HTTP 클라이언트.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 # 앱과 DB(docker-compose의 TZ)를 같은 시간대로 맞춘다. 05 §0 날짜는 +09:00 오프셋이다.
 ENV TZ=Asia/Seoul
 WORKDIR /app
