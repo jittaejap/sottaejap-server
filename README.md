@@ -72,4 +72,47 @@ src/main/resources/
 
 ## 배포
 
-`Dockerfile`이 bootJar를 `eclipse-temurin:21-jre`에 담습니다. EC2 + Docker Compose로 AI 서버와 함께 배포합니다 (07 §1 공통 인프라).
+`main`에 병합되고 **CI가 통과하면** `.github/workflows/deploy.yml`이 자동으로 배포합니다.
+GitHub Actions가 이미지를 굽고, EC2는 받아서 켜기만 합니다 (프리티어 메모리로는 Gradle 빌드가 죽습니다).
+
+```text
+CI 통과 → 이미지 빌드 → Docker Hub push → EC2 SSH → compose 전송 → pull·up -d → 헬스체크
+```
+
+EC2 구성은 `deploy/docker-compose.yml`이 정본입니다. `sottaejap-ai`도 EC2에 있는 이 파일을 읽어 쓰므로,
+**이 저장소가 최소 한 번 먼저 배포돼야** AI 배포가 동작합니다.
+8080·8000은 `127.0.0.1`에만 열려 있고 바깥은 Nginx(`api.clearpng.cloud`)만 통과합니다.
+
+### Actions Secrets
+
+| 이름 | 내용 |
+| --- | --- |
+| `EC2_HOST` | 탄력적 IP 또는 `api.clearpng.cloud` |
+| `EC2_SSH_KEY` | `sottaejap-key.pem` 파일 내용 전체 |
+| `DOCKERHUB_TOKEN` | Docker Hub 액세스 토큰 (계정 `jinocc`). 러너의 push에만 씁니다 — 이미지가 public이라 EC2는 로그인하지 않습니다 |
+
+### EC2 `~/apps/.env`
+
+이 저장소가 관리하지 않습니다. 사람이 EC2에 직접 두고, 없으면 배포가 이유를 출력하고 멈춥니다.
+로컬 `.env`를 그대로 복사하면 안 됩니다 — 컨테이너끼리는 `localhost`가 아니라 서비스 이름(`db` · `ai` · `server`)으로 부릅니다.
+
+| 키 | 없으면 |
+| --- | --- |
+| `DB_PASSWORD` | 배포 중단. `@ : / # ?` 를 넣지 않습니다 — AI의 `DATABASE_URL`이 깨집니다 |
+| `JWT_SECRET` | 배포 중단 (없으면 서버 기동 자체가 실패합니다) |
+| `AUTH_ALLOWED_ORIGINS` | 배포 중단 (없으면 배포된 클라이언트가 CORS에 막힙니다) |
+| `AI_SHARED_SECRET` | 배포 중단 (없으면 `/internal/ai/*`가 전부 401). AI의 `INTERNAL_SHARED_SECRET`으로도 같이 들어갑니다 |
+| `OPENAI_API_KEY` | 배포 중단 |
+| `KAKAO_CLIENT_ID` · `KAKAO_CLIENT_SECRET` · `KAKAO_REDIRECT_URIS` | 카카오 로그인만 불가 (비워도 기동) |
+| `DEMO_ACCOUNT_ENABLED` | 기본 `true`. 데모 로그인을 닫으려면 `false` |
+| `RULES_*` | 넣지 않습니다. `application.yml`의 잠정값이 그대로 쓰입니다. 값을 비운 키(`RULES_SHRINKAGE_K=`)는 잠정값이 아니라 `null`이라 회고 저장이 500이 됩니다 — 덮어쓸 때만 값과 함께 추가합니다 |
+
+### 되돌리기
+
+이미지 태그가 커밋 해시로 고정돼 있습니다. Docker Hub에 이전 이미지가 남아 있어 재빌드가 필요 없습니다.
+
+```bash
+# EC2에서
+cd ~/apps/sottaejap-server/deploy
+SERVER_TAG=<이전 커밋 해시> docker compose --env-file ~/apps/.env up -d server
+```

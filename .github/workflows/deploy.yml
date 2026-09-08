@@ -1,0 +1,120 @@
+# CI가 main에서 통과한 뒤에만 이미지를 구워 Docker Hub에 올리고, EC2는 받아서 켜기만 한다.
+# EC2에서 빌드하지 않는다 — 프리티어 메모리로는 Gradle 빌드가 죽는다.
+#
+# 이미지는 public이라 EC2는 docker login 하지 않는다. 토큰은 러너에만 있다.
+#
+# 필요한 Secrets (Settings > Secrets and variables > Actions):
+#   EC2_HOST         탄력적 IP 또는 api.clearpng.cloud
+#   EC2_SSH_KEY      sottaejap-key.pem 파일 내용 전체
+#   DOCKERHUB_TOKEN  Docker Hub 액세스 토큰 (계정 jinocc, 비밀번호 아님) — push 전용
+name: Deploy
+
+on:
+  # push가 아니라 CI 완료를 받는다. 머지 커밋 자체가 검증되지 않은 채 나가는 것을 막는다.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# 같은 레포에서 배포가 겹치지 않게 한다. 레포끼리 겹치는 것은 EC2의 flock이 막는다.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # CI가 실패·취소로 끝났으면 배포하지 않는다.
+    # 수동 실행도 main에서만 받는다 — 아무 브랜치에서나 CI 없이 운영에 나가는 길을 막는다.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      # 배포할 커밋. 이미지 태그이자 되돌릴 때의 좌표다.
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Docker Hub 로그인
+        uses: docker/login-action@v3
+        with:
+          username: jinocc
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Buildx 준비
+        uses: docker/setup-buildx-action@v3
+
+      - name: 이미지 빌드와 푸시
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # EC2는 커밋 해시 태그를 받아 쓴다. latest는 사람이 손으로 볼 때의 편의용이다.
+          tags: |
+            jinocc/sottaejap-server:latest
+            jinocc/sottaejap-server:${{ env.SHA }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: SSH 키 준비
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy.pem
+          chmod 600 ~/.ssh/deploy.pem
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+          # keyscan이 조용히 빈 출력을 내면 다음 ssh가 Host key verification failed로 죽는다.
+          # 원인을 짚기 어려운 실패라 여기서 먼저 멈춘다.
+          test -s ~/.ssh/known_hosts
+
+      - name: compose 파일 전송
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy.pem "ubuntu@$EC2_HOST" 'mkdir -p ~/apps/sottaejap-server/deploy'
+          scp -i ~/.ssh/deploy.pem deploy/docker-compose.yml \
+            "ubuntu@$EC2_HOST:~/apps/sottaejap-server/deploy/docker-compose.yml"
+
+      - name: 재배포와 헬스체크
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy.pem "ubuntu@$EC2_HOST" "SERVER_TAG='$SHA' bash -se" <<'EOS'
+          set -euo pipefail
+
+          # server와 ai 배포가 동시에 들어와도 한 번에 하나만 돌게 한다.
+          exec 9>/tmp/sottaejap-deploy.lock
+          flock -w 300 9
+
+          cd ~/apps/sottaejap-server/deploy
+          dc() { docker compose --env-file "$HOME/apps/.env" "$@"; }
+
+          dc pull server
+          dc up -d server
+
+          # 8080은 127.0.0.1에만 열려 있어 EC2 안에서만 확인할 수 있다.
+          # t3.micro에서 JVM 기동 + Flyway는 첫 배포에 특히 느리다 — 5분까지 기다린다.
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
+              echo "server UP ($SERVER_TAG)"
+              # 커밋마다 이미지가 쌓인다. 프리티어 루트 볼륨은 8GB다.
+              # 실행 중이 아닌 이미지만 지운다 — 되돌릴 이미지는 Docker Hub에 남아 있다.
+              # 정리에 실패해도 서버는 떠 있다. 배포를 빨갛게 만들지 않는다.
+              docker image prune -af || true
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "헬스체크 실패 — 최근 로그"
+          dc logs --tail=80 server
+          exit 1
+          EOS
