@@ -9,6 +9,11 @@ import kr.sottaejap.server.rules.aggregate.AnalysisAggregator;
 import kr.sottaejap.server.rules.aggregate.AnalysisSummary;
 import kr.sottaejap.server.rules.aggregate.CategorySummary;
 import kr.sottaejap.server.rules.aggregate.ClusterSnapshot;
+import kr.sottaejap.server.rules.report.GoalAllocation;
+import kr.sottaejap.server.rules.report.GoalSaving;
+import kr.sottaejap.server.rules.report.MonthlyDeltaRule;
+import kr.sottaejap.server.rules.report.MonthlyFigures;
+import kr.sottaejap.server.rules.report.MonthlyTransaction;
 import kr.sottaejap.server.rules.saving.GoalProjectionRule;
 import kr.sottaejap.server.rules.saving.SavingRule;
 import kr.sottaejap.server.rules.saving.SuggestionOrderRule;
@@ -155,6 +160,29 @@ class RuleEngineDeterminismTest {
         assertEquals(0.096, GoalProjectionRule.projectedRate(0, 96000, 1_000_000), 1e-9);
         assertEquals(targets, clusters.stream().filter(SuggestionTargetRule::isTarget)
                 .sorted(SuggestionOrderRule.comparator()).map(ClusterSnapshot::id).toList());
+    }
+
+    /** 월간 산식 골든 케이스 — 같은 거래 · 같은 목표면 같은 집계 · 같은 배분 (NFR-01 · E-94). */
+    @Test
+    void monthlyDeltaRule_고정입력_고정출력() {
+        List<MonthlyTransaction> transactions = List.of(
+                new MonthlyTransaction(12000, YearMonth.of(2026, 8), Satisfaction.LOW, true),
+                new MonthlyTransaction(15000, YearMonth.of(2026, 8), Satisfaction.LOW, true),
+                new MonthlyTransaction(6000, YearMonth.of(2026, 8), Satisfaction.HIGH, false),
+                new MonthlyTransaction(4000, YearMonth.of(2026, 8), null, false),
+                new MonthlyTransaction(48000, YearMonth.of(2026, 7), null, false));
+        List<GoalSaving> savings = List.of(new GoalSaving(2L, 10000), new GoalSaving(1L, 30000));
+
+        MonthlyFigures august = MonthlyDeltaRule.figures(transactions, YearMonth.of(2026, 8));
+        MonthlyFigures july = MonthlyDeltaRule.figures(transactions, YearMonth.of(2026, 7));
+        Integer saved = MonthlyDeltaRule.savedAmount(july.totalSpending(), august.totalSpending());
+        List<GoalAllocation> first = MonthlyDeltaRule.allocate(saved, savings);
+        List<GoalAllocation> second = MonthlyDeltaRule.allocate(saved, savings);
+
+        assertEquals(new MonthlyFigures(37000, 2, 2), august);
+        assertEquals(11000, saved);
+        assertEquals(List.of(new GoalAllocation(1L, 8250), new GoalAllocation(2L, 2750)), first);
+        assertEquals(first, second);
     }
 
     private static void collectViolations(Path path, List<String> violations) {
