@@ -1,5 +1,6 @@
 package kr.sottaejap.server.internalai;
 
+import jakarta.validation.Valid;
 import kr.sottaejap.server.common.response.ApiResponse;
 import kr.sottaejap.server.internalai.dto.InternalReflectionRequest;
 import kr.sottaejap.server.retrospect.dto.MemoryResponse;
@@ -55,7 +56,7 @@ public class InternalAiController {
     /** SpringClient.save_reflection — 외부 POST /retrospects와 같은 검증·응답. source는 CANDIDATE (E-66). */
     @PostMapping("/reflections")
     public ApiResponse<RetrospectSaveResponse> saveReflection(@PathVariable long userId,
-                                                              @RequestBody InternalReflectionRequest request) {
+                                                              @Valid @RequestBody InternalReflectionRequest request) {
         return ApiResponse.success(retrospectService.save(userId, request.toSaveRequest()));
     }
 
