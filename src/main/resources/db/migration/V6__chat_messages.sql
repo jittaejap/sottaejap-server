@@ -11,5 +11,7 @@ CREATE TABLE chat_messages (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 최근 대화를 거래별로 뒤에서부터 읽는다.
-CREATE INDEX ix_chat_messages_user_tx_created ON chat_messages (user_id, transaction_id, created_at DESC);
+-- 최근 대화를 거래별로 뒤에서부터 읽는다. 질문과 답변은 같은 created_at을 갖기 때문에 id까지 넣어야
+-- 정렬이 한 가지로 정해진다 (조회도 created_at DESC, id DESC로 읽는다).
+CREATE INDEX ix_chat_messages_user_tx_created
+    ON chat_messages (user_id, transaction_id, created_at DESC, id DESC);

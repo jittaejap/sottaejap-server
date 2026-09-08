@@ -10,11 +10,11 @@ import kr.sottaejap.server.chat.dto.FinanceChatResponse;
 import kr.sottaejap.server.chat.repository.ChatMessageRepository;
 import kr.sottaejap.server.common.enums.RetrospectStatus;
 import kr.sottaejap.server.common.enums.TaskType;
-import kr.sottaejap.server.common.enums.TimeSlot;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,6 +36,7 @@ public class FinanceChatServiceImpl implements FinanceChatService {
 
     private final AiClient aiClient;
     private final ChatMessageRepository chatMessageRepository;
+    private final Clock clock;
 
     /**
      * 일부러 @Transactional이 아니다 — AI 왕복(최대 15초) 동안 커넥션을 잡고 있으면 대화 턴마다 풀(기본 10)이
@@ -58,7 +59,7 @@ public class FinanceChatServiceImpl implements FinanceChatService {
 
     private List<kr.sottaejap.server.ai.dto.ChatMessage> recentMessages(long userId) {
         List<ChatMessage> latestFirst = chatMessageRepository
-                .findByUserIdAndTransactionIdIsNullOrderByCreatedAtDesc(
+                .findByUserIdAndTransactionIdIsNullOrderByCreatedAtDescIdDesc(
                         userId, PageRequest.of(0, RECENT_MESSAGE_LIMIT));
         List<kr.sottaejap.server.ai.dto.ChatMessage> messages = new ArrayList<>(latestFirst.size());
         for (ChatMessage stored : latestFirst) {
@@ -75,7 +76,7 @@ public class FinanceChatServiceImpl implements FinanceChatService {
      * <p>두 행을 한 번에 저장한다 — save 두 번이면 트랜잭션도 둘이라 답변만 빠진 대화가 남을 수 있다.
      */
     private void record(long userId, String question, String reply) {
-        OffsetDateTime now = OffsetDateTime.now(TimeSlot.ZONE);
+        OffsetDateTime now = OffsetDateTime.now(clock);
         chatMessageRepository.saveAll(List.of(
                 ChatMessage.of(userId, null, ChatMessage.Role.USER, question, now),
                 ChatMessage.of(userId, null, ChatMessage.Role.ASSISTANT, reply, now)));

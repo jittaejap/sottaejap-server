@@ -8,11 +8,15 @@ import kr.sottaejap.server.chat.dto.FinanceChatRequest;
 import kr.sottaejap.server.chat.dto.FinanceChatResponse;
 import kr.sottaejap.server.chat.repository.ChatMessageRepository;
 import kr.sottaejap.server.common.enums.TaskType;
+import kr.sottaejap.server.common.enums.TimeSlot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -30,6 +34,10 @@ class FinanceChatServiceImplTest {
 
     private static final long USER_ID = 1L;
 
+    /** 저장 시각은 주입한 Clock에서 온다 — 정적 호출이면 테스트에서 고정할 수 없다. */
+    private static final OffsetDateTime NOW = LocalDate.of(2026, 9, 7)
+            .atTime(LocalTime.of(20, 0)).atZone(TimeSlot.ZONE).toOffsetDateTime();
+
     private AiClient aiClient;
     private ChatMessageRepository chatMessageRepository;
     private FinanceChatServiceImpl service;
@@ -38,9 +46,10 @@ class FinanceChatServiceImplTest {
     void setUp() {
         aiClient = mock(AiClient.class);
         chatMessageRepository = mock(ChatMessageRepository.class);
-        service = new FinanceChatServiceImpl(aiClient, chatMessageRepository);
+        service = new FinanceChatServiceImpl(aiClient, chatMessageRepository,
+                Clock.fixed(NOW.toInstant(), TimeSlot.ZONE));
 
-        when(chatMessageRepository.findByUserIdAndTransactionIdIsNullOrderByCreatedAtDesc(
+        when(chatMessageRepository.findByUserIdAndTransactionIdIsNullOrderByCreatedAtDescIdDesc(
                 anyLong(), any(Pageable.class))).thenReturn(List.of());
         when(aiClient.chat(any())).thenReturn(new ChatResponse("연금저축 세액공제는 …", List.of(), false, false));
     }
@@ -71,11 +80,14 @@ class FinanceChatServiceImplTest {
         assertThat(saved.getValue())
                 .extracting(ChatMessage::getRole)
                 .containsExactly(ChatMessage.Role.USER, ChatMessage.Role.ASSISTANT);
+        assertThat(saved.getValue())
+                .extracting(ChatMessage::getCreatedAt)
+                .containsOnly(NOW);
     }
 
     @Test
     void sendsRecentMessagesOldestFirst() {
-        when(chatMessageRepository.findByUserIdAndTransactionIdIsNullOrderByCreatedAtDesc(
+        when(chatMessageRepository.findByUserIdAndTransactionIdIsNullOrderByCreatedAtDescIdDesc(
                 anyLong(), any(Pageable.class))).thenReturn(List.of(
                 ChatMessage.of(USER_ID, null, ChatMessage.Role.ASSISTANT, "IRP는 …", OffsetDateTime.now()),
                 ChatMessage.of(USER_ID, null, ChatMessage.Role.USER, "IRP는 뭔가요?", OffsetDateTime.now())));
