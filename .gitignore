@@ -24,6 +24,11 @@ replay_pid*
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+# Eclipse · Buildship — VS Code Java 확장과 Claude 데스크톱 앱의 Java 언어 서버가 Gradle 임포트 때 만든다
+.classpath
+.factorypath
+.project
+.settings/
 
 ### 환경 변수 — .env.example만 커밋한다 (07 §3)
 .env
