@@ -1,6 +1,10 @@
 -- 금융 RAG 저장소 (FR-12 · E-21 · 04 §1). 스키마 소유자는 server이므로 확장과 테이블은
 -- 여기서 만든다 — ai는 이미 있는 테이블을 읽기만 한다.
-CREATE EXTENSION IF NOT EXISTS vector;
+-- WITH SCHEMA를 생략하면 확장은 search_path의 첫 스키마에 깔린다. Flyway가 defaultSchema를
+-- 맨 앞에 붙이므로, 전용 스키마로 도는 FlywayUpgradeFromV1Test에서는 그 스키마에 깔렸다가
+-- 테스트가 스키마를 지울 때 함께 사라진다. 지금은 Flyway가 search_path 뒤에 public을 남기고
+-- 테스트가 순차 실행이라 안 터지지만, 설치 위치를 순서에 맡길 이유가 없다.
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 
 CREATE TABLE financial_chunks (
     id        BIGSERIAL PRIMARY KEY,
