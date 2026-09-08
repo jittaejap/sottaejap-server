@@ -47,11 +47,12 @@ public class SuggestionServiceImpl implements SuggestionService {
                         : suggestion.getStatus() == status)
                 .toList();
 
+        // 조회가 behavior_clusters 조인이고 behavior_id가 FK라 묶음은 반드시 있다 — null을 방어하지 않는다
         Map<Long, ClusterSnapshot> clusters = clustersOf(suggestions);
         // 좌표 순 → 부담 내림차순 (E-81). 마지막 동점은 id로 끊는다 — 규칙 계층은 id를 모른다
         Comparator<Suggestion> order = Comparator
                 .comparing((Suggestion suggestion) -> clusters.get(suggestion.getBehaviorId()),
-                        Comparator.nullsLast(SuggestionOrderRule.comparator()))
+                        SuggestionOrderRule.comparator())
                 .thenComparing(Suggestion::getId);
 
         return new SuggestionListResponse(suggestions.stream()
