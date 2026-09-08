@@ -69,4 +69,9 @@ public class User {
         user.onboardingCompleted = false;
         return user;
     }
+
+    /** 회고 저장 시 규칙 엔진이 낸 사용자 전체 평균으로 갱신한다 (E-61). */
+    public void updateAvgSatisfaction(Double avgSatisfaction) {
+        this.avgSatisfaction = avgSatisfaction;
+    }
 }

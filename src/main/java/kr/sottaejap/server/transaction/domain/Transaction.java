@@ -78,4 +78,9 @@ public class Transaction {
                                  String category, String sourceCategory, String importHash) {
         return new Transaction(userId, occurredAt, merchant, amount, category, sourceCategory, importHash);
     }
+
+    /** 회고 저장 후 규칙 엔진이 정한 리프 묶음 (E-59). 재계산마다 다시 배정된다. */
+    public void assignBehavior(Long behaviorId) {
+        this.behaviorId = behaviorId;
+    }
 }

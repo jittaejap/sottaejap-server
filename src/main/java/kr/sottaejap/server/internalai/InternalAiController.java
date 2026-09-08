@@ -1,9 +1,11 @@
 package kr.sottaejap.server.internalai;
 
-import kr.sottaejap.server.common.exception.BusinessException;
-import kr.sottaejap.server.common.exception.CommonErrorCode;
+import jakarta.validation.Valid;
 import kr.sottaejap.server.common.response.ApiResponse;
 import kr.sottaejap.server.internalai.dto.InternalReflectionRequest;
+import kr.sottaejap.server.retrospect.dto.MemoryResponse;
+import kr.sottaejap.server.retrospect.dto.RetrospectSaveResponse;
+import kr.sottaejap.server.retrospect.service.RetrospectService;
 import kr.sottaejap.server.transaction.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -22,7 +24,8 @@ import java.util.Map;
 /**
  * AI `SpringClient` 6개 메서드와 1:1인 내부 조회·저장 API (05 §3). 응답은 camelCase 봉투다.
  *
- * <p>스캐폴딩 단계: 아직 도메인이 없는 4종은 빈 목록, 저장 1종은 501 NOT_IMPLEMENTED. 붙는 순서대로 채운다.
+ * <p>v2.2: reflections GET/POST · memory는 실구현 (E-66). analysis · suggestions는 아직 도메인이 없어 빈 목록.
+ * 응답 `data`는 반드시 object여야 AI `SpringClient`가 봉투를 벗긴다.
  */
 @RestController
 @RequestMapping("/internal/ai/users/{userId}")
@@ -30,6 +33,7 @@ import java.util.Map;
 public class InternalAiController {
 
     private final TransactionService transactionService;
+    private final RetrospectService retrospectService;
 
     /** SpringClient.get_transactions — 업로드된 거래를 그대로 돌려준다. 계산·판정은 없다. */
     @GetMapping("/transactions")
@@ -46,13 +50,14 @@ public class InternalAiController {
     /** SpringClient.get_reflections */
     @GetMapping("/reflections")
     public ApiResponse<Map<String, Object>> getReflections(@PathVariable long userId) {
-        return ApiResponse.success(Map.of("reflections", List.of()));
+        return ApiResponse.success(Map.of("reflections", retrospectService.findReflections(userId)));
     }
 
-    /** SpringClient.save_reflection — 외부 POST /retrospects와 같은 검증·응답 */
+    /** SpringClient.save_reflection — 외부 POST /retrospects와 같은 검증·응답. source는 CANDIDATE (E-66). */
     @PostMapping("/reflections")
-    public ApiResponse<Void> saveReflection(@PathVariable long userId, @RequestBody InternalReflectionRequest request) {
-        throw new BusinessException(CommonErrorCode.NOT_IMPLEMENTED);
+    public ApiResponse<RetrospectSaveResponse> saveReflection(@PathVariable long userId,
+                                                              @Valid @RequestBody InternalReflectionRequest request) {
+        return ApiResponse.success(retrospectService.save(userId, request.toSaveRequest()));
     }
 
     /** SpringClient.get_behavior_analysis — 외부 GET /analysis + GET /satisfaction-map의 points */
@@ -67,9 +72,9 @@ public class InternalAiController {
         return ApiResponse.success(Map.of("suggestions", List.of()));
     }
 
-    /** SpringClient.get_memory */
+    /** SpringClient.get_memory — 개인 소비 메모리 요약 */
     @GetMapping("/memory")
-    public ApiResponse<Map<String, Object>> getMemory(@PathVariable long userId) {
-        return ApiResponse.success(Map.of("clusters", List.of(), "recentReflections", List.of()));
+    public ApiResponse<MemoryResponse> getMemory(@PathVariable long userId) {
+        return ApiResponse.success(retrospectService.memory(userId));
     }
 }
