@@ -6,7 +6,7 @@ import kr.sottaejap.server.rules.aggregate.CategorySummary;
 import kr.sottaejap.server.rules.aggregate.VerdictSummary;
 
 /**
- * '나만의 특징' 폴백 문장 3종 (⑨ · E-75). AI가 없거나(503) 빈 문장을 주거나 근거 밖 숫자를 쓰면 이 문장을 쓴다.
+ * '나만의 특징' 폴백 문장 4종 (⑨ · E-75 · E-89). AI가 없거나(503) 빈 문장을 주거나 근거 밖 숫자를 쓰면 이 문장을 쓴다.
  *
  * <p>집계에 실제로 있는 수치만 쓴다 (NFR-02) — 예산이 없어도 성립하도록 비율 대신 금액을 인용한다.
  */
@@ -14,6 +14,8 @@ public final class HighlightTemplate {
 
     static final String NO_ADJUST = "이번 달은 바꿔보고 싶은 소비가 눈에 띄지 않았어요.";
     static final String NO_RETROSPECT = "아직 돌아본 소비가 없어요. 몇 건만 회고하면 나만의 특징이 보이기 시작해요.";
+    /** E-89 잠정 문구 — 문구 담당이 확정하면 이 상수만 바꾼다. */
+    static final String NO_MONTH_ACTIVITY = "이번 달에 돌아본 소비가 아직 없어요. 이번 달 거래를 몇 건 회고하면 특징이 보이기 시작해요.";
 
     private HighlightTemplate() {
     }
@@ -23,12 +25,16 @@ public final class HighlightTemplate {
      * 아니다 — 회고한 거래가 전부 기준월 밖이면 묶음은 서 있는데 월 합계가 0이라 카테고리가 통째로 빠진다
      * (E-73의 "합계 0인 카테고리는 뺀다"). 온보딩 표본 회고를 지난달에 하면 바로 밟는 경로다.
      *
-     * <p>이때는 {@link #NO_ADJUST}로 보낸다. 문장을 새로 두는 것은 E-75의 "템플릿 3종"을 4종으로 바꾸는
-     * 결정이라 이 판에서 하지 않는다.
+     * <p>이때는 {@link #NO_MONTH_ACTIVITY}로 보낸다 (E-89 — 템플릿 4종째). "바꿀 소비가 없다"({@link #NO_ADJUST})는
+     * 판정처럼 읽히고, "돌아본 소비가 없다"는 사실이 아니다. 판별은 집계 결과로만 한다 — 유효 묶음 ≥ 1이고
+     * {@code byCategory}가 비어 있으면 기준월 합계가 0이다 (합계 0인 카테고리는 E-73이 이미 뺐다).
      */
     public static String highlightFor(AnalysisSummary summary) {
         if (effectiveClusterCount(summary) == 0) {
             return NO_RETROSPECT;
+        }
+        if (summary.byCategory().isEmpty()) {
+            return NO_MONTH_ACTIVITY;
         }
         return summary.byCategory().stream()
                 .filter(category -> category.verdict() == Verdict.ADJUST)

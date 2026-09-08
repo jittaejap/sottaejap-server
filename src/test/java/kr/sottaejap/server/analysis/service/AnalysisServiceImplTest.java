@@ -52,6 +52,20 @@ class AnalysisServiceImplTest {
         verifyNoInteractions(highlightService);
     }
 
+    /**
+     * 회고한 거래가 전부 기준월 밖이면 묶음은 서 있는데 월 합계가 0이라 카테고리가 통째로 빠진다 (E-73).
+     * AI에 줄 수치가 하나도 없으므로 부르지 않는다 (E-91) — 부르면 E-89의 문장이 키 있는 환경에서 나가지 못한다.
+     */
+    @Test
+    void 기준월_합계가_0이면_AI를_부르지_않는다() {
+        when(snapshotLoader.load(USER_ID)).thenReturn(snapshot(1_000_000, List.of(outsideMonth())));
+
+        AnalysisResponse response = service.analysis(USER_ID);
+
+        assertEquals(HighlightTemplate.NO_MONTH_ACTIVITY, response.highlight());
+        verifyNoInteractions(highlightService);
+    }
+
     @Test
     void 묶음이_있으면_집계를_AI에_넘겨_한_문장을_받는다() {
         when(snapshotLoader.load(USER_ID)).thenReturn(snapshot(1_000_000, List.of(adjust(), sustain())));
@@ -112,6 +126,12 @@ class AnalysisServiceImplTest {
 
     private static ClusterSnapshot adjust() {
         return new ClusterSnapshot(1L, "배달|NIGHT||", "심야 배달", null, 4, -0.42, 12_000, 96_000, 8, 0.096,
+                EvaluationStatus.RESOLVED, Quadrant.MINOR, Verdict.ADJUST);
+    }
+
+    /** 회고는 했지만 그 거래가 전부 기준월 밖이라 월 합계가 0인 묶음 — E-89가 겨냥한 사용자다. */
+    private static ClusterSnapshot outsideMonth() {
+        return new ClusterSnapshot(3L, "배달|NIGHT||", "심야 배달", null, 3, -0.42, null, 0, 0, 0.0,
                 EvaluationStatus.RESOLVED, Quadrant.MINOR, Verdict.ADJUST);
     }
 

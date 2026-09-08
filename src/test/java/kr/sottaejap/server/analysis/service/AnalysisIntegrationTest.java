@@ -1,6 +1,7 @@
 package kr.sottaejap.server.analysis.service;
 
 import kr.sottaejap.server.ai.AiClient;
+import kr.sottaejap.server.ai.dto.ChatResponse;
 import kr.sottaejap.server.analysis.dto.AnalysisResponse;
 import kr.sottaejap.server.analysis.dto.BehaviorDetailResponse;
 import kr.sottaejap.server.analysis.dto.InternalAnalysisResponse;
@@ -38,6 +39,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -126,6 +129,30 @@ class AnalysisIntegrationTest {
                 analysis.highlight());
     }
 
+    /**
+     * 온보딩 표본 회고를 지난달 거래에 붙이면 묶음은 서는데 기준월 합계가 0이라 카테고리가 통째로 빈다 (E-73 · E-89).
+     *
+     * <p>다른 폴백 테스트와 달리 <b>AI를 살려 둔다</b> — 이 경로는 AI가 죽어서가 아니라 부를 근거가 없어서
+     * 템플릿으로 가는 것이다 (E-91). AI가 멀쩡히 한 문장을 줄 수 있는 상태에서도 부르지 않아야 한다.
+     */
+    @Test
+    void 기준월_합계가_0이면_AI가_살아_있어도_이번_달_회고를_권한다() {
+        when(aiClient.chat(any())).thenReturn(new ChatResponse("AI가 지어낸 한 문장", List.of(), null, false));
+        // 업로드가 회고보다 먼저다 (온보딩 순서) — 8월 거래가 기준월을 8월로 세운다 (E-78).
+        save("2026-08-05T12:00:00+09:00", 30_000, "analysis-it-current");
+        writeThreeJulyRetrospects();
+
+        AnalysisResponse analysis = analysisService.analysis(userId);
+
+        assertEquals("2026-08", analysis.analysisYearMonth());
+        // 같은 키 회고 3건이라 유효 묶음은 1개다 — NO_RETROSPECT 조건(유효 묶음 0)이 아님을 못 박는다.
+        assertEquals(1, analysis.byVerdict().stream().mapToInt(VerdictSummary::clusterCount).sum()
+                + analysis.pending().clusterCount());
+        assertEquals(List.of(), analysis.byCategory());
+        assertEquals(HighlightTemplate.NO_MONTH_ACTIVITY, analysis.highlight());
+        verify(aiClient, never()).chat(any());
+    }
+
     @Test
     void 내부_AI_응답에는_highlight가_없고_묶음_상세는_거래_셋을_준다() {
         writeThreeNightDeliveryRetrospects();
@@ -166,6 +193,13 @@ class AnalysisIntegrationTest {
         retrospectWriter.write(userId, request(save("2026-08-20T23:10:00+09:00", 12_000, "analysis-it-1")));
         retrospectWriter.write(userId, request(save("2026-08-21T23:20:00+09:00", 15_000, "analysis-it-2")));
         retrospectWriter.write(userId, request(save("2026-08-22T23:30:00+09:00", 9_000, "analysis-it-3")));
+    }
+
+    /** 같은 키 회고 3건을 지난달(7월) 거래에 붙인다 — 묶음은 서지만 기준월(8월) 합계는 0이다. */
+    private void writeThreeJulyRetrospects() {
+        retrospectWriter.write(userId, request(save("2026-07-20T23:10:00+09:00", 12_000, "analysis-it-jul-1")));
+        retrospectWriter.write(userId, request(save("2026-07-21T23:20:00+09:00", 15_000, "analysis-it-jul-2")));
+        retrospectWriter.write(userId, request(save("2026-07-22T23:30:00+09:00", 9_000, "analysis-it-jul-3")));
     }
 
     private Transaction save(String occurredAt, int amount, String hash) {
