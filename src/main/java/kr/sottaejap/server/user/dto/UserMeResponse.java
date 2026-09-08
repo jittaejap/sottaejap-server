@@ -11,6 +11,7 @@ import kr.sottaejap.server.user.domain.User;
 public record UserMeResponse(
         Long id,
         String email,
+        String nickname,
         AuthProvider authProvider,
         Integer monthlyBudget,
         Double outlierThreshold,
@@ -23,6 +24,7 @@ public record UserMeResponse(
         return new UserMeResponse(
                 user.getId(),
                 user.getEmail(),
+                user.getNickname(),
                 user.getAuthProvider(),
                 user.getMonthlyBudget(),
                 user.getOutlierThreshold(),

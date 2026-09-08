@@ -37,3 +37,6 @@ replay_pid*
 CLAUDE.local.md
 AGENTS.local.md
 .claude/settings.local.json
+
+# IDE(Eclipse·VS Code Java) 빌드 출력
+bin/
