@@ -14,7 +14,6 @@ import kr.sottaejap.server.common.enums.TimeSlot;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -38,8 +37,13 @@ public class FinanceChatServiceImpl implements FinanceChatService {
     private final AiClient aiClient;
     private final ChatMessageRepository chatMessageRepository;
 
+    /**
+     * 일부러 @Transactional이 아니다 — AI 왕복(최대 15초) 동안 커넥션을 잡고 있으면 대화 턴마다 풀(기본 10)이
+     * 마른다 (E-64). {@link kr.sottaejap.server.retrospect.service.RetrospectChatSupport#chat}과 같은 이유다.
+     * 최근 대화는 AI를 부르기 전에 리스트로 다 꺼내 놓아 지연 로딩이 열릴 자리가 없고, 저장은 {@code saveAll}
+     * 한 번이 자기 트랜잭션을 짧게 쓴다.
+     */
     @Override
-    @Transactional
     public FinanceChatResponse ask(long userId, FinanceChatRequest request) {
         ChatResponse response = aiClient.chat(new ChatRequest(
                 request.message(),
@@ -65,10 +69,15 @@ public class FinanceChatServiceImpl implements FinanceChatService {
         return messages;
     }
 
-    /** 거래에 매이지 않는 대화라 transactionId는 null이다. */
+    /**
+     * 거래에 매이지 않는 대화라 transactionId는 null이다.
+     *
+     * <p>두 행을 한 번에 저장한다 — save 두 번이면 트랜잭션도 둘이라 답변만 빠진 대화가 남을 수 있다.
+     */
     private void record(long userId, String question, String reply) {
         OffsetDateTime now = OffsetDateTime.now(TimeSlot.ZONE);
-        chatMessageRepository.save(ChatMessage.of(userId, null, ChatMessage.Role.USER, question, now));
-        chatMessageRepository.save(ChatMessage.of(userId, null, ChatMessage.Role.ASSISTANT, reply, now));
+        chatMessageRepository.saveAll(List.of(
+                ChatMessage.of(userId, null, ChatMessage.Role.USER, question, now),
+                ChatMessage.of(userId, null, ChatMessage.Role.ASSISTANT, reply, now)));
     }
 }

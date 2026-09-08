@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,12 +62,13 @@ class FinanceChatServiceImplTest {
     void storesTurnWithoutATransaction() {
         service.ask(USER_ID, new FinanceChatRequest("IRP는 뭔가요?"));
 
-        ArgumentCaptor<ChatMessage> saved = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(chatMessageRepository, times(2)).save(saved.capture());
-        assertThat(saved.getAllValues())
+        // 질문과 답변은 한 번에 저장한다 — save 두 번이면 답변만 빠진 대화가 남을 수 있다.
+        ArgumentCaptor<List<ChatMessage>> saved = ArgumentCaptor.captor();
+        verify(chatMessageRepository).saveAll(saved.capture());
+        assertThat(saved.getValue())
                 .extracting(ChatMessage::getTransactionId)
                 .containsOnlyNulls();
-        assertThat(saved.getAllValues())
+        assertThat(saved.getValue())
                 .extracting(ChatMessage::getRole)
                 .containsExactly(ChatMessage.Role.USER, ChatMessage.Role.ASSISTANT);
     }
