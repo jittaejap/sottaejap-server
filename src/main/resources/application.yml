@@ -63,10 +63,23 @@ ai:
   shared-secret: ${AI_SHARED_SECRET:}
   timeout-ms: ${AI_TIMEOUT_MS:15000}
 
-# 규칙 엔진 파라미터 (07 §7). 9/7 데이터 확보 후 값을 넣는다. 비어 있으면 null로 바인딩된다 — 코드에 상수 금지.
+# 규칙 엔진 파라미터 (07 §7). v2.2 잠정값이 기본값이고 RULES_* 환경변수로 덮어쓴다 (E-57) — 코드에 상수 금지.
+# 근거 있는 확정값이 아니다. 데이터 확보 후(06 #15~#18 · #20) 여기 값만 바꾼다.
 rules:
-  shrinkage-k: ${RULES_SHRINKAGE_K:}
-  rollup-min-count: ${RULES_ROLLUP_MIN_COUNT:}
-  pending-min-count: ${RULES_PENDING_MIN_COUNT:}
-  axis-x-boundary: ${RULES_AXIS_X_BOUNDARY:}
-  axis-y-boundary: ${RULES_AXIS_Y_BOUNDARY:}
+  shrinkage-k: ${RULES_SHRINKAGE_K:3}
+  rollup-min-count: ${RULES_ROLLUP_MIN_COUNT:3}
+  pending-min-count: ${RULES_PENDING_MIN_COUNT:3}
+  axis-x-boundary: ${RULES_AXIS_X_BOUNDARY:0.1}
+  axis-y-boundary: ${RULES_AXIS_Y_BOUNDARY:0}
+  chat-window-days: ${RULES_CHAT_WINDOW_DAYS:3}
+  sensitivity:
+    conservative: ${RULES_SENSITIVITY_CONSERVATIVE:3.0}
+    standard: ${RULES_SENSITIVITY_STANDARD:2.0}
+    sensitive: ${RULES_SENSITIVITY_SENSITIVE:1.5}
+  candidate:
+    outlier-baseline-days: ${RULES_CANDIDATE_OUTLIER_BASELINE_DAYS:90}
+    outlier-min-samples: ${RULES_CANDIDATE_OUTLIER_MIN_SAMPLES:5}
+    big-amount-budget-ratio: ${RULES_CANDIDATE_BIG_AMOUNT_BUDGET_RATIO:0.1}
+    repeated-low-min-count: ${RULES_CANDIDATE_REPEATED_LOW_MIN_COUNT:2}
+  cluster:
+    meal-categories: ${RULES_CLUSTER_MEAL_CATEGORIES:식사,식비,음식점,외식,배달,한식,중식,일식,양식,분식,패스트푸드,카페}
