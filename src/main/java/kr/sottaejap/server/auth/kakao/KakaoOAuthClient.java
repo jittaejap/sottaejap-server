@@ -18,8 +18,8 @@ import java.time.Duration;
 /**
  * 카카오와 통신하는 유일한 지점 (E-55). 인가 코드 → 토큰 교환 → 프로필 조회.
  *
- * <p>토큰 엔드포인트의 4xx는 코드 문제(만료 · 재사용 · redirect_uri 불일치, 실측 KOE320)라 400 OAUTH_CODE_INVALID,
- * 그 외 실패(5xx · 타임아웃 · 프로필 조회 실패)는 502 OAUTH_PROVIDER_ERROR로 바꾼다 (05 §0).
+ * <p>토큰 엔드포인트의 400만 코드 문제(만료 · 재사용 · redirect_uri 불일치, 실측 KOE320)라 400 OAUTH_CODE_INVALID,
+ * 그 외 실패(400 아닌 4xx · 5xx · 타임아웃 · 프로필 조회 실패)는 502 OAUTH_PROVIDER_ERROR로 바꾼다 (05 §2 실측 ③).
  */
 @Component
 public class KakaoOAuthClient {
@@ -71,9 +71,10 @@ public class KakaoOAuthClient {
                 throw new BusinessException(AuthErrorCode.OAUTH_PROVIDER_ERROR);
             }
             return token.accessToken();
-        } catch (HttpClientErrorException exception) {
+        } catch (HttpClientErrorException.BadRequest exception) {
             throw new BusinessException(AuthErrorCode.OAUTH_CODE_INVALID, exception);
         } catch (RestClientException exception) {
+            // 401 · 403(앱 인증 · 권한) · 429(요청 제한)는 새 인가 코드를 받아도 풀리지 않는다. 코드 오류로 안내하면 로그인 루프가 된다.
             throw new BusinessException(AuthErrorCode.OAUTH_PROVIDER_ERROR, exception);
         }
     }

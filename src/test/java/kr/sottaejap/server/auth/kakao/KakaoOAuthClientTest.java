@@ -101,6 +101,14 @@ class KakaoOAuthClientTest {
     }
 
     @Test
+    void 토큰_엔드포인트의_400_아닌_4xx는_OAUTH_PROVIDER_ERROR() {
+        // 요청 제한 · 앱 인증 실패는 새 인가 코드를 받아도 풀리지 않는다 — 코드 오류로 안내하면 클라이언트가 로그인 루프에 빠진다.
+        assertTokenStatusMapsTo(HttpStatus.TOO_MANY_REQUESTS, AuthErrorCode.OAUTH_PROVIDER_ERROR);
+        assertTokenStatusMapsTo(HttpStatus.UNAUTHORIZED, AuthErrorCode.OAUTH_PROVIDER_ERROR);
+        assertTokenStatusMapsTo(HttpStatus.FORBIDDEN, AuthErrorCode.OAUTH_PROVIDER_ERROR);
+    }
+
+    @Test
     void 토큰_엔드포인트_5xx는_OAUTH_PROVIDER_ERROR() {
         server.expect(requestTo(TOKEN_URI)).andRespond(withServerError());
 
@@ -136,6 +144,17 @@ class KakaoOAuthClientTest {
         assertEquals(true, properties.allowsRedirectUri(REDIRECT_URI));
         assertEquals(false, properties.allowsRedirectUri("http://evil.example/callback"));
         assertEquals(false, properties.allowsRedirectUri(null));
+    }
+
+    /** MockRestServiceServer는 기대 하나에 응답 하나라, 상태 코드마다 클라이언트를 새로 만든다. */
+    private void assertTokenStatusMapsTo(HttpStatus status, AuthErrorCode expected) {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer mockServer = MockRestServiceServer.bindTo(builder).build();
+        KakaoOAuthClient tokenClient = new KakaoOAuthClient(properties("rest-api-key", "client-secret"), builder);
+        mockServer.expect(requestTo(TOKEN_URI)).andRespond(withStatus(status));
+
+        assertErrorCode(expected, () -> tokenClient.fetchProfile("auth-code", REDIRECT_URI));
+        mockServer.verify();
     }
 
     private static KakaoProperties properties(String clientId, String clientSecret) {
