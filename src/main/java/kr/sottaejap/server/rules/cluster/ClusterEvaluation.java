@@ -24,8 +24,11 @@ import java.util.List;
  * @param quadrant             PENDING 또는 burdenRatio null이면 null
  * @param verdict              PENDING이면 null
  * @param transactionIds       이 묶음에 <b>직접</b> 속한 거래 id — behaviorId를 배정할 대상이다.
- *                             롤업으로 자식이 붙은 상위 묶음은 비어 있다. 자식 거래의 behaviorId는
- *                             리프에 그대로 남는다 (E-59). 집계(retrospectCount · monthlyTotalAmount)만 합집합이다
+ *                             롤업으로 자식이 붙기만 한 상위 묶음은 비어 있고, 자식 거래의 behaviorId는
+ *                             리프에 그대로 남는다 (E-59). 다만 목적·동행인이 둘 다 없는 회고는 키가 상위 키와
+ *                             같아져 그 상위 묶음의 <b>직접 구성원</b>이 되므로, 자식이 붙어 있어도 비지 않는다
+ *                             (ClusterEngineTest 목적_동행인이_없는_회고는_상위_묶음의_직접_구성원이_된다).
+ *                             집계(retrospectCount · monthlyTotalAmount)만 합집합이다
  * @param sampleMerchants      묶음 명명용 가맹점 표본, 중복 제거 최대 3개
  */
 public record ClusterEvaluation(
