@@ -12,6 +12,8 @@ description = "소때잡 서버 — 인증 · 저장/조회 API · 파싱 · 규
 val springdocVersion = "3.1.0"
 val jjwtVersion = "0.13.0"
 val poiVersion = "5.5.1"
+val webPushVersion = "5.1.1"
+val bouncyCastleVersion = "1.78.1"
 
 java {
     toolchain {
@@ -38,6 +40,18 @@ dependencies {
 
     // XLSX 업로드 — 05 §2. Boot 미관리
     implementation("org.apache.poi:poi-ooxml:$poiVersion")
+    // Web Push — Boot 미관리. VAPID JWT 서명과 AES128GCM 본문 암호화 때문에 직접 짜지 않는다.
+    // 이 라이브러리에서 쓰는 것은 암호화와 서명뿐이고 전송은 AiClient와 같은 JDK HttpClient로 한다.
+    // 그래서 딸려 오는 HTTP 스택 셋(Apache async · AHC/Netty · CLI용 jcommander)은 전부 제외한다.
+    implementation("nl.martijndwars:web-push:$webPushVersion") {
+        exclude(group = "org.apache.httpcomponents")
+        exclude(group = "org.asynchttpclient")
+        exclude(group = "com.beust", module = "jcommander")
+    }
+    // web-push의 POM이 빠뜨린다. AbstractPushService.encrypt가 BouncyCastle 타입을 직접 받는다.
+    implementation("org.bouncycastle:bcprov-jdk18on:$bouncyCastleVersion")
+    // web-push의 Base64Encoder가 쓴다. 원래는 위에서 제외한 httpclient를 타고 딸려 오던 것이다.
+    implementation("commons-codec:commons-codec")
 
     // JWT — Boot 미관리
     implementation("io.jsonwebtoken:jjwt-api:$jjwtVersion")

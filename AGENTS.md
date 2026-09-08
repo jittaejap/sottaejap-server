@@ -48,7 +48,7 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 - `AiClient`는 JDK `HttpClient`를 **HTTP/1.1로 고정**합니다. 기본값(HTTP/2 업그레이드 시도)이면 uvicorn이 본문을 버려
   `/chat`이 422 "Field required: body"를 돌려주고, Spring은 그것을 503 `LLM_UNAVAILABLE`로 보여줍니다. AI 서버가
   멀쩡한데 ai-ping이 503이면 이것부터 의심합니다.
-- `AI_TIMEOUT_MS`(15초)는 AI 내부의 LLM 8초 + AI → Spring 조회 왕복을 포함해야 합니다 (07 §10 리스크 4).
+- `AI_TIMEOUT_MS`(15초)는 AI 내부의 LLM **6초**(E-88 — 재시도 1회를 포함한 최악 12초) + AI → Spring 조회 왕복을 포함해야 합니다 (07 §10 리스크 4).
   AI 응답의 `fallback`은 v1.6부터 항상 옵니다 (06 R3 완료). `OPENAI_API_KEY`가 비어 있어도 AI는 템플릿 응답 + `fallback: true` + 200이므로,
   키 없는 로컬에서 ai-ping이 200에 `fallback: true`면 정상입니다 (E-38). 구버전 AI를 만날 수 있으니 `ChatResponse.isFallback()`을 유지하고 `null`을 직접 비교하지 않습니다.
 - AI의 `/chat`도 `INTERNAL_SHARED_SECRET`이 비어 있거나 헤더가 다르면 **모든 요청을 401**로 거부합니다 (E-37). 양쪽 값이 같아야 ai-ping이 200입니다.

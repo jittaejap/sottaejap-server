@@ -53,7 +53,9 @@ src/main/java/kr/sottaejap/server/
 ├── auth/         JWT 발급·검증 · Bearer 필터 · 데모 로그인 · kakao/ 인가 코드 교환·프로필 조회 (E-55)
 ├── user/         User · GET /users/me
 ├── transaction/  거래 업로드 · CSV 파서 · 조회
+├── notification/ 인앱 알림 목록·읽음 · Web Push 구독 · 결제 시각 스케줄로 회고 요청 1건 생성 (FR-10)
 ├── retrospect/   회고 저장 · 후보 선별 · 대화 턴 프록시 · BehaviorCluster upsert (E-57~E-66)
+├── chat/         대화 저장 · 금융 지식 Q&A 프록시 (05 #24 · FR-12)
 ├── rules/        ★ 규칙 엔진 — cluster · shrinkage · verdict · candidate · saving · aggregate · RuleParams (정민규)
 ├── ai/           ★ AiClient — AI POST /chat 호출의 유일한 지점 · snake_case 변환
 ├── internalai/   기계가 부르는 경로 — /internal/ai/* 6종 · X-Internal-Secret 필터 · /internal-test/ai-ping
@@ -67,6 +69,155 @@ src/main/resources/
 도메인 패키지(`user` · `transaction` · 앞으로의 `goal` · `retrospect` …)는 `controller` · `service` ·
 `repository` · `dto` · `domain` 다섯 하위 패키지를 씁니다. 엔티티가 없는 기술 패키지(`auth` · `ai` ·
 `internalai` · `common` · `config` · `rules`)는 역할 이름을 그대로 씁니다 — 빈 `repository/`를 만들지 않습니다.
+
+## Web Push 키 설정 (FR-10)
+
+클라이언트에서 붙이는 방법은 아래 [클라이언트 연결](#클라이언트-연결)에 있습니다.
+인앱 알림은 VAPID 키 없이도 동작합니다. 키가 비어 있으면 브라우저 푸시만 꺼지고, 알림은 그대로
+만들어져 `GET /notifications`에 뜹니다. 켜려면 P-256 키쌍을 만들어 세 값을 모두 채웁니다.
+
+```bash
+openssl ecparam -genkey -name prime256v1 -noout -out vapid.pem
+
+# VAPID_PUBLIC_KEY — 클라이언트가 pushManager.subscribe에 넘길 applicationServerKey (87자)
+openssl ec -in vapid.pem -pubout -outform DER | tail -c 65 | base64 | tr -d '=\n' | tr '/+' '_-'
+
+# VAPID_PRIVATE_KEY — 서버만 갖습니다. 커밋하지 마세요 (43자)
+openssl ec -in vapid.pem -outform DER | tail -c +8 | head -c 32 | base64 | tr -d '=\n' | tr '/+' '_-'
+```
+
+`VAPID_SUBJECT`는 푸시 서비스가 문제 시 연락할 곳이며 `mailto:` 또는 https URL이어야 합니다.
+세 값을 `.env`에 넣습니다. **형식이 틀리면 기동이 실패합니다** — 조용히 꺼두면 원인을 찾느라
+시간을 쓰기 때문입니다.
+
+알림 생성은 `NOTIFICATION_DAILY_CRON`(기본 30분마다)에 도는 스케줄이 본류입니다. 사용자가 앱을
+열지 않아도 푸시가 나가야 하기 때문이고, 목록 조회 시 생성은 그 사이를 메우는 그물입니다. 어느
+쪽이든 하루 1건 가드를 지나야 하므로 겹쳐도 두 번 생기지 않습니다 (FR-03-03). 푸시는 스케줄
+경로에서만, 그것도 저장 트랜잭션을 커밋한 뒤에 나갑니다 — 목록을 여는 사용자는 이미 앱을 보고
+있으므로 보내지 않습니다.
+
+**주기는 30분 격자에 맞춥니다.** 목표 시각이 30분 격자에 내린 값이라(아래 E-71) 시간마다
+(`0 0 * * * *`)로 바꾸면 목표가 `:30`인 사용자는 스케줄에 영영 걸리지 않고 목록 조회 경로만 남습니다.
+
+보내는 **시각은 사용자마다 다릅니다** (E-71) — 후보 거래의 결제 시각에서 1시간을 빼고 07:00~21:00으로
+자른 뒤 30분 격자에 내린 값입니다. 새벽 1시 결제는 07:00, 22시 결제는 21:00에 갑니다. 그래서 스케줄은
+30분마다 돌면서 "지금이 이 사람의 시각인가"만 봅니다. 사용자가 시각을 고르는 설정은 없습니다.
+
+## 클라이언트 연결
+
+`POST /chat/finance`(#24)의 본문은 05 §3의 `task_context` 규격에서 역산했고, Web Push 3종은
+FR-10을 위해 신설했습니다. **05에 반영할 때 이 절이 근거입니다.** 응답은 모두
+`{ success, data }` 봉투입니다 (05 §0).
+
+### 알림 (FR-10)
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/notifications` | `{ unreadCount, notifications[] }`. 여는 순간 그날의 회고 요청 1건이 없으면 만듭니다 |
+| POST | `/notifications/{id}/read` | 읽음 처리. 이것이 곧 후보 제외입니다 — 별도 상태를 저장하지 않습니다 (E-49) |
+| GET | `/notifications/push-key` | `{ enabled, publicKey }`. `enabled: false`면 구독을 시도하지 말고 인앱 알림만 씁니다 |
+| POST | `/notifications/push-subscriptions` | 브라우저 `PushSubscription.toJSON()`을 **그대로** 보냅니다 |
+| DELETE | `/notifications/push-subscriptions?endpoint=…` | 구독 해지. 없는 구독을 지워도 성공입니다 |
+
+### Web Push 붙이기
+
+브라우저는 **HTTPS에서만** Push를 허용합니다 (`localhost`만 예외). iOS Safari는 사용자가
+**홈 화면에 추가한 PWA**에서만 동작하고, 그 전에는 `Notification.requestPermission()`이 거부됩니다.
+
+```js
+// 1) 서버가 켜져 있는지 확인하고 공개키를 받는다
+const { data } = await api.get('/notifications/push-key');
+if (!data.enabled) return;                       // 인앱 알림만 쓴다
+
+// 2) service worker 등록 + 권한 요청
+const registration = await navigator.serviceWorker.register('/sw.js');
+if ((await Notification.requestPermission()) !== 'granted') return;
+
+// 3) 구독하고 서버에 그대로 넘긴다
+const subscription = await registration.pushManager.subscribe({
+  userVisibleOnly: true,                         // 크롬은 false를 거부한다
+  applicationServerKey: urlBase64ToUint8Array(data.publicKey),
+});
+await api.post('/notifications/push-subscriptions', subscription.toJSON());
+
+// base64url → Uint8Array. 문자열을 그대로 받는 브라우저도 있지만 전부는 아니다.
+function urlBase64ToUint8Array(base64Url) {
+  const padded = (base64Url + '='.repeat((4 - (base64Url.length % 4)) % 4))
+    .replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+}
+```
+
+서버가 보내는 본문은 `{ title, body, url }` 세 개뿐입니다.
+
+```js
+// public/sw.js
+self.addEventListener('push', (event) => {
+  const { title, body, url } = event.data.json();
+  event.waitUntil(self.registration.showNotification(title, { body, data: { url } }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow(event.notification.data.url));
+});
+```
+
+구독이 폐기되면(브라우저 재설치·장기 미사용) 푸시 서비스가 404·410을 돌려주고 **서버가 그 행을
+스스로 지웁니다.** 클라이언트는 `pushsubscriptionchange` 이벤트에서 다시 구독해 등록하면 됩니다.
+
+### 대화형 회고 — `POST /retrospects/chat` (05 §2 · E-63)
+
+**상태 없는 프록시입니다.** 회고 대화는 서버에 쌓지 않으므로 화면이 `step` · 지금까지 확인한 값 ·
+최근 대화를 들고 다닙니다.
+
+```jsonc
+// 요청
+{
+  "transactionId": 1043,
+  "message": "혼자 배고파서 그냥 시켰는데 별로였어요",
+  "step": "SATISFACTION",
+  "reflection": { "satisfaction": "UNKNOWN", "purpose": null, "companion": null, "repeatIntent": null },
+  "recentMessages": [{ "role": "assistant", "content": "만족하셨나요?" }]
+}
+```
+
+`step`은 `INTRO` · `SATISFACTION` · `PURPOSE` · `COMPANION` · `REPEAT` · `CONFIRM` 중 하나입니다.
+`INTRO`는 사용자 입력 없이 시작하는 턴이라 `message`를 생략합니다 — 그 턴에서 AI가
+"왜 이 거래를 골랐는지"를 설명합니다 (FR-04-10·11). `recentMessages`는 서버가 최근 6개만 넘깁니다.
+
+```jsonc
+// 응답 data
+{
+  "reply": "혼자 드신 충동 소비로 보이는데, 맞을까요?",
+  "step": "PURPOSE",
+  "reflection": { "satisfaction": "LOW", "purpose": "충동", "companion": "혼자", "repeatIntent": null },
+  "needsClarification": true,
+  "uncertainFields": ["repeatIntent"],
+  "fallback": false
+}
+```
+
+- `reflection`은 **AI가 추측한 후보값이고 아직 저장되지 않았습니다.** 화면이 확인 버튼으로
+  보여주고, 사용자가 고른 값만 `POST /retrospects`로 저장합니다 (E-20 · FR-04-07).
+- `step`은 서버가 계산한 **다음 단계**입니다 — 응답 `reflection`에서 아직 미확정인 첫 항목이고,
+  전부 확정이면 `CONFIRM`. 다음 턴에 그대로 돌려보냅니다.
+- `uncertainFields`에는 AI가 되물으라고 한 항목에 더해 **서버가 표준 태그 밖이라 버린 항목**도 들어갑니다.
+- `fallback: true`면 LLM 없이 템플릿으로 답한 것이니 템플릿 모드 배너를 띄웁니다 (S11 · E-38).
+- 남의 거래는 **404**, 이미 회고한 거래는 **409 `DUPLICATE_RETROSPECT`**, AI가 죽으면
+  **503 `LLM_UNAVAILABLE`** 입니다. 알림·거래 등 나머지 화면은 그대로 동작합니다.
+
+### 금융 지식 Q&A — `POST /chat/finance` (05 #24 · P2)
+
+```jsonc
+// 요청 → 응답 data
+{ "message": "연금저축 세액공제가 뭐예요?" }
+{ "reply": "연금저축 상품에 가입하고 납입한 금액에 대해 …", "fallback": false }
+```
+
+이전 질문의 맥락은 서버가 들고 있으므로 "그럼 한도는요?" 같은 되물음이 그대로 이어집니다.
+출처는 별도 필드가 아니라 문장 안에 언급됩니다 (E-47). 근거를 못 찾으면 지어내지 않고
+"확인할 수 없어요"라고 답하는 것이 정상입니다 (FR-12-02).
 
 규칙과 함정은 [AGENTS.md](./AGENTS.md), 브랜치·커밋·PR은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 보세요.
 
