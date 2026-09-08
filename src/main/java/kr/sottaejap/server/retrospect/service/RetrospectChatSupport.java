@@ -22,7 +22,6 @@ import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -53,7 +52,11 @@ public class RetrospectChatSupport {
     private final CandidateService candidateService;
     private final AiClient aiClient;
 
-    @Transactional(readOnly = true)
+    /**
+     * 일부러 @Transactional이 아니다 — AI 왕복(최대 15초) 동안 커넥션을 잡고 있으면 대화 턴마다 풀(기본 10)이 마른다 (E-64).
+     * 리포지토리 호출 두 개와 {@link CandidateService#reasonCodeFor}가 각자 짧은 트랜잭션을 쓰고, AI를 부르기 전에
+     * 엔티티 접근이 끝나 있어 지연 로딩이 열릴 자리가 없다.
+     */
     public RetrospectChatResponse chat(long userId, RetrospectChatRequest request) {
         Transaction transaction = transactionRepository.findByIdAndUserId(request.transactionId(), userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND));
