@@ -13,6 +13,7 @@ import kr.sottaejap.server.retrospect.repository.RetrospectWithTransaction;
 import kr.sottaejap.server.rules.RuleParamsFixture;
 import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.repository.TransactionRepository;
+import kr.sottaejap.server.suggestion.service.SuggestionSyncService;
 import kr.sottaejap.server.transaction.service.TransactionService;
 import kr.sottaejap.server.user.domain.User;
 import kr.sottaejap.server.user.repository.UserRepository;
@@ -65,6 +66,8 @@ class ClusterRecomputeServiceImplTest {
     private TransactionService transactionService;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private SuggestionSyncService suggestionSyncService;
 
     private ClusterRecomputeServiceImpl service;
     private User user;
@@ -73,7 +76,8 @@ class ClusterRecomputeServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new ClusterRecomputeServiceImpl(retrospectRepository, behaviorClusterRepository,
-                transactionRepository, transactionService, userRepository, RuleParamsFixture.sample());
+                transactionRepository, transactionService, userRepository, suggestionSyncService,
+                RuleParamsFixture.sample());
         user = User.social(AuthProvider.KAKAO, "kakao-1", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", USER_ID);
         ReflectionTestUtils.setField(user, "monthlyBudget", 1_000_000);
@@ -178,7 +182,7 @@ class ClusterRecomputeServiceImplTest {
 
         assertEquals(List.of(), service.recomputeAll(USER_ID));
 
-        verifyNoInteractions(behaviorClusterRepository, userRepository);
+        verifyNoInteractions(behaviorClusterRepository, userRepository, suggestionSyncService);
         verify(retrospectRepository, never()).findAllWithTransactionByUserId(anyLong());
     }
 

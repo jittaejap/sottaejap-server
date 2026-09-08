@@ -2,6 +2,7 @@ package kr.sottaejap.server.internalai;
 
 import kr.sottaejap.server.common.enums.EvaluationStatus;
 import kr.sottaejap.server.common.enums.Quadrant;
+import kr.sottaejap.server.common.enums.SuggestionStatus;
 import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.common.enums.RetrospectSource;
 import kr.sottaejap.server.common.enums.RetrospectStatus;
@@ -12,6 +13,9 @@ import kr.sottaejap.server.common.exception.CommonErrorCode;
 import kr.sottaejap.server.analysis.dto.InternalAnalysisResponse;
 import kr.sottaejap.server.analysis.dto.MapPointView;
 import kr.sottaejap.server.analysis.service.AnalysisService;
+import kr.sottaejap.server.suggestion.dto.SuggestionListResponse;
+import kr.sottaejap.server.suggestion.dto.SuggestionView;
+import kr.sottaejap.server.suggestion.service.SuggestionService;
 import kr.sottaejap.server.common.exception.GlobalExceptionHandler;
 import kr.sottaejap.server.retrospect.dto.ClusterMemoryView;
 import kr.sottaejap.server.retrospect.dto.MemoryResponse;
@@ -57,13 +61,16 @@ class InternalAiControllerTest {
     private RetrospectService retrospectService;
     @Mock
     private AnalysisService analysisService;
+    @Mock
+    private SuggestionService suggestionService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new InternalAiController(transactionService, retrospectService, analysisService))
+                        new InternalAiController(transactionService, retrospectService, analysisService,
+                                suggestionService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -155,5 +162,18 @@ class InternalAiControllerTest {
                 .andExpect(jsonPath("$.data.byCategory[0].category").value("배달"))
                 .andExpect(jsonPath("$.data.points[0].behaviorId").value(12))
                 .andExpect(jsonPath("$.data.highlight").doesNotExist());
+    }
+    @Test
+    void get_action_plan은_AI가_id로_고를_수_있는_목록을_준다() throws Exception {
+        when(suggestionService.internalList(1L)).thenReturn(new SuggestionListResponse(List.of(
+                new SuggestionView(7L, 12L, "심야 배달", 36_000, 12_000, 3, -0.25, Quadrant.MINOR,
+                        3, 36_000, null, SuggestionStatus.PROPOSED, "심야 배달은(는) 만족도가 낮았어요."))));
+
+        mockMvc.perform(get("/internal/ai/users/1/suggestions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.suggestions[0].id").value(7))
+                .andExpect(jsonPath("$.data.suggestions[0].behaviorId").value(12))
+                .andExpect(jsonPath("$.data.suggestions[0].expectedSaving").value(36_000))
+                .andExpect(jsonPath("$.data.suggestions[0].reason").exists());
     }
 }

@@ -9,6 +9,10 @@ import kr.sottaejap.server.rules.aggregate.AnalysisAggregator;
 import kr.sottaejap.server.rules.aggregate.AnalysisSummary;
 import kr.sottaejap.server.rules.aggregate.CategorySummary;
 import kr.sottaejap.server.rules.aggregate.ClusterSnapshot;
+import kr.sottaejap.server.rules.saving.GoalProjectionRule;
+import kr.sottaejap.server.rules.saving.SavingRule;
+import kr.sottaejap.server.rules.saving.SuggestionOrderRule;
+import kr.sottaejap.server.rules.saving.SuggestionTargetRule;
 import kr.sottaejap.server.rules.cluster.ClusterEngine;
 import kr.sottaejap.server.rules.cluster.ClusterEvaluation;
 import kr.sottaejap.server.rules.cluster.ClusterRecomputeInput;
@@ -130,6 +134,27 @@ class RuleEngineDeterminismTest {
                 first.byCategory().stream().map(CategorySummary::category).toList());
         assertEquals(0.096, first.byVerdict().get(1).share(), 1e-9);
         assertEquals(24000, first.pending().monthlyTotalAmount());
+    }
+
+    /** 절감액 규칙 골든 케이스 — 같은 묶음이면 같은 대상 판정·같은 금액·같은 순서 (NFR-01 · E-81). */
+    @Test
+    void savingRule_고정입력_고정출력() {
+        List<ClusterSnapshot> clusters = List.of(
+                new ClusterSnapshot(1L, "배달|NIGHT||", "심야 배달", null, 4, -0.42, 12000, 96000, 8, 0.096,
+                        EvaluationStatus.RESOLVED, Quadrant.MINOR, Verdict.ADJUST),
+                new ClusterSnapshot(2L, "카페|DAY||", "낮 카페", null, 5, 0.71, 28000, 168000, 6, 0.168,
+                        EvaluationStatus.RESOLVED, Quadrant.PROTECT, Verdict.SUSTAIN),
+                new ClusterSnapshot(3L, "택시|||", null, null, 4, -0.9, 20000, 80000, 4, 0.3,
+                        EvaluationStatus.RESOLVED, Quadrant.PRIORITY, Verdict.ADJUST));
+
+        List<Long> targets = clusters.stream().filter(SuggestionTargetRule::isTarget)
+                .sorted(SuggestionOrderRule.comparator()).map(ClusterSnapshot::id).toList();
+
+        assertEquals(List.of(3L, 1L), targets);
+        assertEquals(96000, SavingRule.expectedSaving(12000, 8));
+        assertEquals(0.096, GoalProjectionRule.projectedRate(0, 96000, 1_000_000), 1e-9);
+        assertEquals(targets, clusters.stream().filter(SuggestionTargetRule::isTarget)
+                .sorted(SuggestionOrderRule.comparator()).map(ClusterSnapshot::id).toList());
     }
 
     private static void collectViolations(Path path, List<String> violations) {
