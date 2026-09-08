@@ -163,21 +163,30 @@ public class NotificationServiceImpl implements NotificationService {
      * `/notifications?ref=…`로 들어와 빈 목록을 본다.
      *
      * <p>한 사람의 데이터 문제로 그날 전원의 알림이 멈추면 안 되므로 예외는 여기서 잡고 다음 사용자로
-     * 넘어간다.
+     * 넘어간다. 저장과 발송을 따로 잡는다 — 알림은 이미 커밋됐는데 "만들지 못했습니다"라고 남으면
+     * 로그가 사실과 달라진다.
+     *
+     * @return 알림을 만들었으면 true. 푸시 실패는 여기에 영향을 주지 않는다.
      */
     private boolean createAndNotify(User user) {
+        Optional<Notification> created;
         try {
-            Optional<Notification> created = transactionTemplate.execute(
-                    status -> createTodayRetrospectDue(user, true));
-            if (created == null || created.isEmpty()) {
-                return false;
-            }
-            webPushSender.send(user.getId(), created.get().getMessage(), created.get().getRefId());
-            return true;
+            created = transactionTemplate.execute(status -> createTodayRetrospectDue(user, true));
         } catch (RuntimeException failed) {
             log.warn("회고 요청 알림을 만들지 못했습니다 — userId={}", user.getId(), failed);
             return false;
         }
+        if (created == null || created.isEmpty()) {
+            return false;
+        }
+        try {
+            // WebPushSender는 구독 하나하나의 발송 실패만 안에서 삼킨다. 구독 조회와 본문 직렬화는
+            // 밖으로 나오므로 여기서 받는다.
+            webPushSender.send(user.getId(), created.get().getMessage(), created.get().getRefId());
+        } catch (RuntimeException failed) {
+            log.warn("알림은 만들었지만 푸시를 보내지 못했습니다 — userId={}", user.getId(), failed);
+        }
+        return true;
     }
 
     /**
