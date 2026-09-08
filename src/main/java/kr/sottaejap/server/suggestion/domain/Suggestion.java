@@ -73,11 +73,19 @@ public class Suggestion {
         this.expectedSaving = expectedSaving;
     }
 
-    /** 채택 (FR-08-02·03·04). 이미 ADOPTED여도 횟수·목표를 고칠 수 있다 (FR-08-05 · E-82). */
+    /**
+     * 채택 (FR-08-02·03·04). 이미 ADOPTED여도 횟수·목표를 고칠 수 있다 (FR-08-05 · E-82).
+     *
+     * <p>{@code goalId}가 null이면 <b>기존 연결을 그대로 둔다.</b> S5는 스텝퍼와 목표 배분이 별개 요소라
+     * 횟수만 고치는 요청이 목표를 지우면 안 된다 — 사용자가 건드리지 않은 값이다. {@code Goal.update}와
+     * {@code PUT /users/me/settings}가 쓰는 "null은 그대로 두기"와 같은 규칙이다.
+     */
     public void adopt(int adjustCount, int expectedSaving, Long goalId) {
         this.adjustCount = adjustCount;
         this.expectedSaving = expectedSaving;
-        this.goalId = goalId;
+        if (goalId != null) {
+            this.goalId = goalId;
+        }
         this.status = SuggestionStatus.ADOPTED;
     }
 

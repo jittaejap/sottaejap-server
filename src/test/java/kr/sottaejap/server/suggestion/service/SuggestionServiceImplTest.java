@@ -168,6 +168,19 @@ class SuggestionServiceImplTest {
     }
 
     @Test
+    void 목표에_붙은_제안의_횟수만_고쳐도_목표_연결이_남는다() {
+        Suggestion suggestion = suggestion(1L, 1L);
+        suggestion.adopt(3, 36_000, 5L);
+        when(suggestionRepository.findByIdAndUserId(1L, USER_ID)).thenReturn(Optional.of(suggestion));
+        when(behaviorClusterRepository.findById(1L)).thenReturn(Optional.of(cluster(1L, Quadrant.MINOR, "심야 배달")));
+
+        SuggestionView view = service.adopt(USER_ID, 1L, new SuggestionAdoptRequest(2, null));
+
+        assertEquals(2, view.adjustCount());
+        assertEquals(5L, view.goalId());
+    }
+
+    @Test
     void 거절한_제안은_다시_채택할_수도_거절할_수도_없다() {
         Suggestion rejected = suggestion(1L, 1L);
         rejected.reject();
