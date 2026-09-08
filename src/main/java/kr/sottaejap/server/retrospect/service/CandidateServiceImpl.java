@@ -41,9 +41,6 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CandidateServiceImpl implements CandidateService {
 
-    /** limit 상한 (05 §2). 규칙 값이 아니라 응답 크기 상한이라 서비스 상수로 둔다. */
-    private static final int MAX_LIMIT = 100;
-
     private final TransactionRepository transactionRepository;
     private final RetrospectRepository retrospectRepository;
     private final UserRepository userRepository;
@@ -53,7 +50,7 @@ public class CandidateServiceImpl implements CandidateService {
     /**
      * {@inheritDoc}
      *
-     * <p>쿼리에는 {@code limit}이 아니라 {@link #MAX_LIMIT}을 건다. 쿼리는 날짜 조건만 알고 규칙 ③④⑤는
+     * <p>쿼리에는 {@code limit}이 아니라 {@link CandidateService#MAX_LIMIT}을 건다. 쿼리는 날짜 조건만 알고 규칙 ③④⑤는
      * 모르기 때문에, {@code limit}건만 읽으면 그 안이 전부 미매칭 거래일 때 결과가 빈 목록이 된다.
      * 넉넉히 읽고 규칙을 적용한 뒤 {@code limit}으로 자른다. 대신 최신 {@code MAX_LIMIT}건 안에
      * 매칭이 하나도 없으면 후보가 없다고 본다 — 사용자가 더 오래된 거래를 보려면 {@code from}·{@code to}로
@@ -64,10 +61,10 @@ public class CandidateServiceImpl implements CandidateService {
     public List<CandidateView> findCandidates(long userId, int limit, LocalDate from, LocalDate to) {
         Baseline baseline = loadBaseline(userId);
         // limit 1 미만은 RetrospectServiceImpl.candidates가 이미 400으로 걸렀다. 상한만 조용히 자른다 (05 §2).
-        int size = Math.min(limit, MAX_LIMIT);
+        int size = Math.min(limit, CandidateService.MAX_LIMIT);
 
         List<Transaction> transactions = transactionRepository.findCandidates(
-                userId, startOf(from), toExclusive(baseline.user(), to), PageRequest.of(0, MAX_LIMIT));
+                userId, startOf(from), toExclusive(baseline.user(), to), PageRequest.of(0, CandidateService.MAX_LIMIT));
 
         List<CandidateView> candidates = new ArrayList<>();
         for (Transaction transaction : transactions) {

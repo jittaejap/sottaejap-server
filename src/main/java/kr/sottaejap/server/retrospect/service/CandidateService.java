@@ -10,6 +10,9 @@ import java.util.List;
 /** 회고 후보 ⓪ (E-62). "오늘"은 Clock으로 보고 규칙에는 금액 목록만 넘긴다. */
 public interface CandidateService {
 
+    /** `limit` 상한 (05 §2). 이보다 크게 요청해도 이 값으로 잘린다. */
+    int MAX_LIMIT = 100;
+
     /**
      * @param limit 1~100 (기본 1은 컨트롤러가 채운다)
      * @param from  조회 시작일(KST) 또는 null — 없으면 상한 없음 (E-48)

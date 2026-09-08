@@ -58,6 +58,16 @@ auth:
     user-info-uri: https://kapi.kakao.com/v2/user/me
     timeout-ms: 5000
 
+# 인앱 알림 (FR-10). VAPID 키가 비어 있으면 Web Push만 꺼지고 인앱 알림은 그대로 동작한다.
+notification:
+  # 회고 요청 알림 스캔 주기 (Asia/Seoul). 앱을 열지 않아도 푸시가 나가야 하므로 스케줄이 본류다.
+  # 알림 시각은 사용자마다 다르므로(E-71 — 결제 시각 -1시간, 07~21시) 30분마다 돌면서 지금이 그 시각인지만 본다.
+  daily-cron: ${NOTIFICATION_DAILY_CRON:0 0,30 * * * *}
+  web-push:
+    public-key: ${VAPID_PUBLIC_KEY:}
+    private-key: ${VAPID_PRIVATE_KEY:}
+    subject: ${VAPID_SUBJECT:}
+
 ai:
   base-url: ${AI_BASE_URL:http://localhost:8000}
   shared-secret: ${AI_SHARED_SECRET:}
