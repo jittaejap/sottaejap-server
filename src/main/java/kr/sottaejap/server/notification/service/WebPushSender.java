@@ -11,7 +11,6 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -71,8 +70,12 @@ public class WebPushSender {
         return vapidRequests != null;
     }
 
-    /** 한 사용자의 모든 기기에 같은 알림을 보낸다. 구독이 없거나 Push가 꺼져 있으면 아무 일도 하지 않는다. */
-    @Transactional
+    /**
+     * 한 사용자의 모든 기기에 같은 알림을 보낸다. 구독이 없거나 Push가 꺼져 있으면 아무 일도 하지 않는다.
+     *
+     * <p>일부러 @Transactional이 아니다 — 구독 하나당 최대 10초 걸리는 HTTP를 도는 동안 커넥션을 잡고
+     * 있으면 안 된다 (E-64). 조회와 410/404 행 삭제는 리포지토리 호출이 각자 짧은 트랜잭션을 쓴다.
+     */
     public void send(long userId, String body, Long refId) {
         if (vapidRequests == null) {
             return;

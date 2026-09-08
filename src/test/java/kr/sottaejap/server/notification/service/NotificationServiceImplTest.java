@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -177,6 +179,40 @@ class NotificationServiceImplTest {
         verify(webPushSender, never()).send(anyLong(), any(), any());
     }
 
+    /** 목록을 보고 있는 사용자에게 푸시를 보내며 응답을 늦출 이유가 없다. */
+    @Test
+    void listPathCreatesTheNotificationButSendsNoPush() {
+        givenNoNotificationToday();
+        givenCandidatePaidAt(LocalTime.of(19, 40));
+        givenUser();
+
+        serviceAt(LocalTime.of(20, 0)).findForUser(USER_ID);
+
+        verify(notificationRepository).save(any());
+        verify(webPushSender, never()).send(anyLong(), any(), any());
+    }
+
+    /** 한 사람의 데이터 문제가 그날 전원의 알림을 막으면 안 된다. */
+    @Test
+    void scheduleKeepsGoingWhenOneUserFails() {
+        long brokenUserId = 2L;
+        givenNoNotificationToday();
+        givenCandidatePaidAt(LocalTime.of(19, 40));
+        // user()를 when(...) 안에서 만들면 스텁이 겹쳐 UnfinishedStubbingException이 난다.
+        List<User> users = List.of(user(brokenUserId), user(USER_ID));
+        when(userRepository.findAll()).thenReturn(users);
+        when(notificationRepository.existsByUserIdAndTypeAndCreatedAtGreaterThanEqual(
+                eq(brokenUserId), eq(NotificationType.RETROSPECT_DUE), any()))
+                .thenThrow(new IllegalStateException("이 사용자에서 조회가 깨졌다"));
+
+        serviceAt(LocalTime.of(18, 30)).createDailyRetrospectDue();
+
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(saved.capture());
+        assertThat(saved.getValue().getUserId()).isEqualTo(USER_ID);
+        verify(webPushSender).send(eq(USER_ID), any(), eq(1043L));
+    }
+
     @Test
     void createsNothingWhenNoCandidateExists() {
         givenNoNotificationToday();
@@ -200,8 +236,11 @@ class NotificationServiceImplTest {
 
     private NotificationServiceImpl serviceAt(LocalTime now) {
         Clock clock = Clock.fixed(TODAY.atTime(now).atZone(TimeSlot.ZONE).toInstant(), TimeSlot.ZONE);
+        // 트랜잭션 관리자는 목이다 — 여기서 볼 것은 "사용자 1건마다 실행하고 그 뒤에 보내는가"뿐이다.
+        TransactionTemplate transactionTemplate =
+                new TransactionTemplate(mock(PlatformTransactionManager.class));
         return new NotificationServiceImpl(notificationRepository, mock(PushSubscriptionRepository.class),
-                candidateService, userRepository, webPushSender, clock);
+                candidateService, userRepository, webPushSender, clock, transactionTemplate);
     }
 
     private void givenNoNotificationToday() {
@@ -216,18 +255,18 @@ class NotificationServiceImplTest {
 
     private void givenUser() {
         // user()를 when(...) 안에서 만들면 스텁이 겹쳐 UnfinishedStubbingException이 난다.
-        User user = user();
+        User user = user(USER_ID);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
     }
 
     private void givenSingleUser() {
-        User user = user();
+        User user = user(USER_ID);
         when(userRepository.findAll()).thenReturn(List.of(user));
     }
 
-    private static User user() {
+    private static User user(long id) {
         User user = mock(User.class);
-        when(user.getId()).thenReturn(USER_ID);
+        when(user.getId()).thenReturn(id);
         return user;
     }
 

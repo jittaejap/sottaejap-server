@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -36,8 +37,10 @@ import java.util.Set;
  * 인앱 알림 (FR-10). 회고 요청 1건은 두 경로로 만들어진다.
  *
  * <ul>
- *   <li>30분마다 도는 스케줄 — 사용자가 앱을 열지 않아도 Web Push가 나가야 하므로 이쪽이 본류다.</li>
- *   <li>목록을 열 때 — 스케줄이 돌지 않았거나 그 사이 가입한 사용자를 위한 그물이다.</li>
+ *   <li>30분마다 도는 스케줄 — 사용자가 앱을 열지 않아도 Web Push가 나가야 하므로 이쪽이 본류다.
+ *       푸시는 사용자 1건 트랜잭션을 커밋한 뒤에만 보낸다.</li>
+ *   <li>목록을 열 때 — 스케줄이 돌지 않았거나 그 사이 가입한 사용자를 위한 그물이다. 이미 앱을 보고
+ *       있는 사용자이므로 푸시는 보내지 않는다.</li>
  * </ul>
  *
  * <p>어느 쪽이든 하루 1건 가드를 통과해야 만들어지므로 둘이 겹쳐도 두 번 생기지 않는다 (FR-03-03).
@@ -71,12 +74,15 @@ public class NotificationServiceImpl implements NotificationService {
     private final UserRepository userRepository;
     private final WebPushSender webPushSender;
     private final Clock clock;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     @Transactional
     public NotificationListResponse findForUser(long userId) {
         // 그물 경로는 목표 시각이 지났을 때만 만든다. 오전에 목록을 연다고 저녁 알림을 미리 소진하면
         // 정작 그 시각에는 하루 1건 가드에 걸려 아무것도 오지 않는다.
+        // 여기서는 푸시를 보내지 않는다 — 사용자가 이미 앱을 열고 목록을 보고 있고, 응답이 발송
+        // (구독당 최대 10초)을 기다릴 이유가 없다.
         userRepository.findById(userId).ifPresent(user -> createTodayRetrospectDue(user, false));
         List<NotificationListResponse.Item> items = notificationRepository.findByUserIdOrderByCreatedAtDesc(userId)
                 .stream()
@@ -123,22 +129,51 @@ public class NotificationServiceImpl implements NotificationService {
      * FR-10-01 — 회고 요청 알림을 각자의 시각에 만든다. 주기는 `NOTIFICATION_DAILY_CRON`으로 바꾼다.
      *
      * <p>사용자마다 목표 시각이 다르므로 스케줄은 30분마다 돌면서 "지금이 이 사람의 시각인가"만 본다.
+     * 목표 시각은 30분 격자에 내린 값이므로(E-71) 주기도 30분 격자에 맞춰야 한다 — 시간마다로 바꾸면
+     * `:30`이 목표인 사용자는 스케줄에 영영 걸리지 않고 그물 경로만 남는다.
+     *
+     * <p>일부러 @Transactional이 아니다. 스캔 전체를 한 트랜잭션으로 묶으면 사용자마다 잡는
+     * `select … for update` 잠금이 스캔이 끝날 때까지 안 풀리고, 한 명에서 난 예외가 그날 전원의
+     * 알림을 롤백한다. 트랜잭션은 {@link #createAndNotify}가 사용자 1건 단위로 연다.
      *
      * <p>ponytail: 사용자를 전부 훑는다. 인스턴스가 하나이고 데모 규모라 그래도 된다 (07 §1).
      * 오늘 알림이 이미 있으면 exists 질의 한 번에서 끝나므로, 후보 계산까지 가는 것은 하루에 사용자당
      * 한 번뿐이다. 사용자가 늘거나 인스턴스를 여러 대로 띄우면 페이징과 잠금이 필요하다.
      */
     @Scheduled(cron = "${notification.daily-cron:0 0,30 * * * *}", zone = "Asia/Seoul")
-    @Transactional
     public void createDailyRetrospectDue() {
         int created = 0;
         for (User user : userRepository.findAll()) {
-            if (createTodayRetrospectDue(user, true).isPresent()) {
+            if (createAndNotify(user)) {
                 created++;
             }
         }
         if (created > 0) {
             log.info("회고 요청 알림 {}건을 만들었습니다.", created);
+        }
+    }
+
+    /**
+     * 사용자 한 명 몫 — 저장은 트랜잭션 하나, 푸시는 그 커밋 뒤다.
+     *
+     * <p>커밋 전에 보내면 뒤에서 롤백됐을 때 알림 없는 푸시가 남는다. 사용자는 푸시를 눌러
+     * `/notifications?ref=…`로 들어와 빈 목록을 본다.
+     *
+     * <p>한 사람의 데이터 문제로 그날 전원의 알림이 멈추면 안 되므로 예외는 여기서 잡고 다음 사용자로
+     * 넘어간다.
+     */
+    private boolean createAndNotify(User user) {
+        try {
+            Optional<Notification> created = transactionTemplate.execute(
+                    status -> createTodayRetrospectDue(user, true));
+            if (created == null || created.isEmpty()) {
+                return false;
+            }
+            webPushSender.send(user.getId(), created.get().getMessage(), created.get().getRefId());
+            return true;
+        } catch (RuntimeException failed) {
+            log.warn("회고 요청 알림을 만들지 못했습니다 — userId={}", user.getId(), failed);
+            return false;
         }
     }
 
@@ -160,9 +195,9 @@ public class NotificationServiceImpl implements NotificationService {
     /**
      * 하루 1건 가드를 경쟁 없이 통과시킨다 (FR-03-03).
      *
-     * <p>스케줄과 목록 조회가 동시에 들어오면 둘 다 위의 `exists`를 false로 읽고 각각 저장·발송할 수
-     * 있다. 사용자 행을 잠근 뒤 다시 확인해서, 잠금을 기다리는 사이 상대가 만들었으면 물러난다.
-     * 잠금은 트랜잭션이 끝나면 풀린다.
+     * <p>스케줄과 목록 조회가 동시에 들어오면 둘 다 위의 `exists`를 false로 읽고 각각 저장할 수 있다.
+     * 사용자 행을 잠근 뒤 다시 확인해서, 잠금을 기다리는 사이 상대가 만들었으면 물러난다.
+     * 잠금은 트랜잭션이 끝나면 풀린다 — 그래서 이 트랜잭션 안에서는 HTTP를 치지 않는다.
      */
     private Optional<Notification> createExclusively(long userId, CandidateView candidate) {
         userRepository.findByIdForUpdate(userId);
@@ -176,8 +211,6 @@ public class NotificationServiceImpl implements NotificationService {
                 message(candidate),
                 OffsetDateTime.now(clock));
         notificationRepository.save(notification);
-        // 발송은 예외를 밖으로 내지 않는다. 실패해도 알림 자체는 이미 저장돼 있다.
-        webPushSender.send(userId, notification.getMessage(), notification.getRefId());
         return Optional.of(notification);
     }
 
