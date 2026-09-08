@@ -9,6 +9,7 @@ import kr.sottaejap.server.retrospect.repository.BehaviorClusterRepository;
 import kr.sottaejap.server.retrospect.repository.RetrospectRepository;
 import kr.sottaejap.server.retrospect.repository.RetrospectWithTransaction;
 import kr.sottaejap.server.rules.RuleParams;
+import kr.sottaejap.server.suggestion.service.SuggestionSyncService;
 import kr.sottaejap.server.rules.cluster.ClusterEngine;
 import kr.sottaejap.server.rules.cluster.ClusterEvaluation;
 import kr.sottaejap.server.rules.cluster.ClusterRecomputeInput;
@@ -47,6 +48,7 @@ public class ClusterRecomputeServiceImpl implements ClusterRecomputeService {
     private final TransactionRepository transactionRepository;
     private final TransactionService transactionService;
     private final UserRepository userRepository;
+    private final SuggestionSyncService suggestionSyncService;
     private final RuleParams ruleParams;
 
     @Override
@@ -89,6 +91,8 @@ public class ClusterRecomputeServiceImpl implements ClusterRecomputeService {
                 .forEach(BehaviorCluster::markEmpty);
 
         user.updateAvgSatisfaction(result.userAverage());
+        // 제안은 이 결과의 파생이다 (E-81). 같은 트랜잭션에서 맞춰야 지도와 제안 목록이 어긋나지 않는다
+        suggestionSyncService.sync(userId);
         return List.copyOf(saved);
     }
 

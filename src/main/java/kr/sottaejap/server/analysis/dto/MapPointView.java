@@ -47,7 +47,6 @@ public record MapPointView(
     }
 
     static String displayName(ClusterSnapshot cluster) {
-        String name = cluster.displayName();
-        return name == null || name.isBlank() ? ClusterNameTemplate.nameFor(cluster.clusterKey()) : name;
+        return ClusterNameTemplate.displayNameOr(cluster.displayName(), cluster.clusterKey());
     }
 }
