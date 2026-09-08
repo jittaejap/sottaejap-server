@@ -56,14 +56,16 @@ public class Goal {
         return goal;
     }
 
-    /** null은 "그대로 두기"다 — 마이페이지가 바꾼 값만 보낸다. */
-    public void update(String name, Integer targetAmount, Integer currentAmount) {
-        if (name != null) {
-            this.name = name;
-        }
-        if (targetAmount != null) {
-            this.targetAmount = targetAmount;
-        }
+    /**
+     * {@code PUT /goals/{id}}는 <b>전체 교체</b>다 — 05 §2의 규칙 표가 {@code POST}와 {@code PUT}에 같이
+     * 걸리고 {@code GoalRequest}가 두 필드를 필수로 받는다.
+     *
+     * <p>{@code currentAmount}만 예외로 "생략하면 그대로 두기"다. 실적이라 화면이 들고 있지 않고,
+     * 이름만 고치는 요청이 실적을 0으로 되돌리면 안 된다. {@code POST}의 "생략하면 0"과 다른 이유다.
+     */
+    public void update(String name, int targetAmount, Integer currentAmount) {
+        this.name = name;
+        this.targetAmount = targetAmount;
         if (currentAmount != null) {
             this.currentAmount = currentAmount;
         }

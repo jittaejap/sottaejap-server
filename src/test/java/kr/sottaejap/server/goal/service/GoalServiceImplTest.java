@@ -109,15 +109,15 @@ class GoalServiceImplTest {
     }
 
     @Test
-    void 수정은_보낸_값만_바꾼다() {
+    void 수정은_이름과_목표액을_바꾸고_실적은_생략하면_유지한다() {
         Goal goal = goal(3L, 1_000_000, 250_000);
         when(goalRepository.findByIdAndUserIdAndDeletedAtIsNull(3L, USER_ID)).thenReturn(Optional.of(goal));
         when(suggestionRepository.findAllByGoalIdInAndStatus(anyList(), eq(SuggestionStatus.ADOPTED))).thenReturn(List.of());
 
-        service.update(USER_ID, 3L, new GoalRequest("새 이름", null, null));
+        service.update(USER_ID, 3L, new GoalRequest("새 이름", 2_000_000, null));
 
         assertEquals("새 이름", goal.getName());
-        assertEquals(1_000_000, goal.getTargetAmount());
+        assertEquals(2_000_000, goal.getTargetAmount());
         assertEquals(250_000, goal.getCurrentAmount());
     }
 
