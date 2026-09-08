@@ -60,7 +60,9 @@ public class SuggestionServiceImpl implements SuggestionService {
                 .toList());
     }
 
+    /** {@code list}를 자기 호출하므로 프록시를 거치지 않는다 — 트랜잭션을 여기에 따로 건다. */
     @Override
+    @Transactional(readOnly = true)
     public SuggestionListResponse internalList(long userId) {
         return list(userId, null);
     }
