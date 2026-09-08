@@ -52,16 +52,20 @@ DB가 필요한 컨텍스트 테스트는 로컬에서 기본으로 건너뜁니
 src/main/java/kr/sottaejap/server/
 ├── auth/         JWT 발급·검증 · Bearer 필터 · 데모 로그인 (카카오는 07 §10 스파이크 후)
 ├── user/         User · GET /users/me
+├── transaction/  거래 업로드 · CSV 파서 · 조회
 ├── rules/        ★ 규칙 엔진 — cluster · shrinkage · verdict · saving · aggregate · RuleParams (정민규)
 ├── ai/           ★ AiClient — AI POST /chat 호출의 유일한 지점 · snake_case 변환
-├── internalai/   AI가 부르는 /internal/ai/* 6종 · X-Internal-Secret 필터
-├── internaltest/ /internal-test/ai-ping
+├── internalai/   기계가 부르는 경로 — /internal/ai/* 6종 · X-Internal-Secret 필터 · /internal-test/ai-ping
 ├── common/       ApiResponse · ErrorCode · 공유 enum
 └── config/       SecurityConfig
 src/main/resources/
 ├── application.yml          rules.* 파라미터 · 환경 변수 바인딩
 └── db/migration/V1__init.sql
 ```
+
+도메인 패키지(`user` · `transaction` · 앞으로의 `goal` · `retrospect` …)는 `controller` · `service` ·
+`repository` · `dto` · `domain` 다섯 하위 패키지를 씁니다. 엔티티가 없는 기술 패키지(`auth` · `ai` ·
+`internalai` · `common` · `config` · `rules`)는 역할 이름을 그대로 씁니다 — 빈 `repository/`를 만들지 않습니다.
 
 규칙과 함정은 [AGENTS.md](./AGENTS.md), 브랜치·커밋·PR은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 보세요.
 

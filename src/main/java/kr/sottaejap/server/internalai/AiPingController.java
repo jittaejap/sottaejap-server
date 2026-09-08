@@ -1,4 +1,4 @@
-package kr.sottaejap.server.internaltest;
+package kr.sottaejap.server.internalai;
 
 import kr.sottaejap.server.ai.AiClient;
 import kr.sottaejap.server.ai.dto.ChatRequest;
