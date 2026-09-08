@@ -16,7 +16,8 @@ import java.time.OffsetDateTime;
  * 04 §1 Goal. 스키마 정본은 db/migration이다 (ddl-auto=validate).
  *
  * <p>{@code currentAmount}는 <b>실적</b>이다 — 제안을 채택해도 오르지 않는다 (E-82). 채택은 '예상'이고
- * 예상으로 달성률을 올리면 쓰지도 않은 돈으로 목표가 차오른다. 실적 반영 시점은 월간 리포트 판에서 정한다.
+ * 예상으로 달성률을 올리면 쓰지도 않은 돈으로 목표가 차오른다. 실적은 지난달 리포트가 확정되는 순간
+ * 실제 감소액을 배분해 더한다 ({@link #addCurrentAmount} · E-94).
  */
 @Entity
 @Table(name = "goals")
@@ -69,6 +70,14 @@ public class Goal {
         if (currentAmount != null) {
             this.currentAmount = currentAmount;
         }
+    }
+
+    /**
+     * 실적 반영 (E-94 ④). 지난달 스냅샷이 확정될 때 {@code savedAmount > 0}을 ADOPTED 제안이 붙은 목표들에
+     * 배분한 몫이다. 확정은 달마다 한 번이라 같은 달의 몫이 두 번 더해질 일은 없다.
+     */
+    public void addCurrentAmount(int amount) {
+        this.currentAmount += amount;
     }
 
     public void delete(OffsetDateTime deletedAt) {

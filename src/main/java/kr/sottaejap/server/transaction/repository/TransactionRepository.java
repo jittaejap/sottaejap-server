@@ -62,6 +62,16 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     /** 이상치 기준선 — 최근 N일 거래 전부 (E-62 ④). 그룹화는 서비스가 한다. */
     List<Transaction> findAllByUserIdAndOccurredAtGreaterThanEqual(long userId, OffsetDateTime from);
 
+    /** 월간 리포트 — 기간 안의 거래 전부 (E-94). 회고 여부와 무관하게 읽는다 — totalSpending은 전체 지출이다. */
+    @Query("""
+            select t from Transaction t
+            where t.userId = :userId and t.occurredAt >= :from and t.occurredAt < :toExclusive
+            order by t.occurredAt asc, t.id asc
+            """)
+    List<Transaction> findAllInRange(@Param("userId") long userId,
+                                     @Param("from") OffsetDateTime from,
+                                     @Param("toExclusive") OffsetDateTime toExclusive);
+
     /** 묶음 명명 표본 — 이 묶음에 배정된 거래 (E-64). */
     List<Transaction> findAllByBehaviorIdOrderByOccurredAtDesc(Long behaviorId);
 
