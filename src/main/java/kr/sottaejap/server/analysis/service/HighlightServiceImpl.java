@@ -8,6 +8,8 @@ import kr.sottaejap.server.common.enums.RetrospectStatus;
 import kr.sottaejap.server.common.enums.TaskType;
 import kr.sottaejap.server.common.exception.BusinessException;
 import kr.sottaejap.server.rules.aggregate.AnalysisSummary;
+import kr.sottaejap.server.rules.aggregate.CategorySummary;
+import kr.sottaejap.server.rules.aggregate.VerdictSummary;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -54,12 +56,38 @@ public class HighlightServiceImpl implements HighlightService {
         }
     }
 
-    /** 05 §3 ANALYSIS_NARRATE state. 키는 snake_case이고 값은 집계 record 그대로다. */
+    /**
+     * 05 §3 ANALYSIS_NARRATE state. 키는 <b>중첩 객체까지</b> snake_case다 — {@code RetrospectChatSupport.buildState} ·
+     * {@code ClusterNamingServiceImpl.state}와 같은 모양이고, AGENTS.md의 "경계는 snake_case"가 여기에도 걸린다.
+     *
+     * <p>집계 record를 그대로 싣지 않고 손으로 옮긴다. 같은 record가 외부 {@code GET /analysis} 응답에도 실려
+     * camelCase로 나가야 하므로, record에 {@code @JsonProperty}를 달아 해결할 수 없다.
+     */
     private Map<String, Object> state(YearMonth analysisYearMonth, AnalysisSummary summary) {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("analysis_year_month", analysisYearMonth == null ? null : analysisYearMonth.toString());
-        state.put("by_verdict", summary.byVerdict());
-        state.put("by_category", summary.byCategory());
+        state.put("by_verdict", summary.byVerdict().stream().map(HighlightServiceImpl::verdictState).toList());
+        state.put("by_category", summary.byCategory().stream().map(HighlightServiceImpl::categoryState).toList());
+        return state;
+    }
+
+    /** 값이 null일 수 있으므로 Map.of가 아니라 LinkedHashMap을 쓴다 — share는 예산이 없으면 null이다. */
+    private static Map<String, Object> verdictState(VerdictSummary row) {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("verdict", row.verdict().name());
+        state.put("cluster_count", row.clusterCount());
+        state.put("monthly_total_amount", row.monthlyTotalAmount());
+        state.put("share", row.share());
+        return state;
+    }
+
+    private static Map<String, Object> categoryState(CategorySummary row) {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("category", row.category());
+        state.put("dominant_time_slot", row.dominantTimeSlot() == null ? null : row.dominantTimeSlot().name());
+        state.put("avg_amount", row.avgAmount());
+        state.put("monthly_total_amount", row.monthlyTotalAmount());
+        state.put("verdict", row.verdict() == null ? null : row.verdict().name());
         return state;
     }
 }
