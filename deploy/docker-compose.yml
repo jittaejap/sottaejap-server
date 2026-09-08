@@ -1,9 +1,13 @@
 # EC2 운영용 구성. 로컬 개발은 레포 루트의 docker-compose.yml(DB만)을 쓴다.
 # 이미지는 EC2에서 굽지 않는다 — GitHub Actions가 구워 Docker Hub에 올린 것을 받아 쓴다.
+# 이 파일은 sottaejap-server가 소유한다. sottaejap-ai는 EC2에 있는 이 파일을 읽어 쓴다.
+#
 # 실행은 두 레포의 .github/workflows/deploy.yml 이 SSH로 직접 한다:
-#   docker compose --env-file ~/apps/.env pull <서비스> && up -d <서비스>
+#   SERVER_TAG=<커밋> docker compose --env-file ~/apps/.env pull server && ... up -d server
 #
 # 비밀값은 이 파일에 두지 않는다. EC2의 ~/apps/.env 에만 있고 커밋하지 않는다.
+# env_file 로 통째로 넣지 않고 서비스마다 필요한 키만 적는다 — ai가 JWT_SECRET을,
+# server가 OPENAI_API_KEY를 받을 이유가 없다. 없으면 안 되는 키는 ${KEY:?...} 로 즉시 멈춘다.
 name: sottaejap
 
 services:
@@ -25,14 +29,34 @@ services:
       retries: 20
 
   server:
-    image: jinocc/sottaejap-server:latest
+    # 태그를 커밋 해시로 고정한다 — 워크플로가 SERVER_TAG를 넘긴다.
+    # 되돌리기: SERVER_TAG=<이전 커밋> docker compose --env-file ~/apps/.env up -d server
+    image: jinocc/sottaejap-server:${SERVER_TAG:-latest}
     restart: unless-stopped
-    env_file: ../../.env
     environment:
       # 컨테이너끼리는 서비스 이름으로 부른다. localhost가 아니다.
       DB_URL: jdbc:postgresql://db:5432/sottaejap
       DB_USER: sottaejap
+      DB_PASSWORD: ${DB_PASSWORD:?~/apps/.env 에 DB_PASSWORD 가 없다}
+      # 잠정값이 없다. 없으면 기동 자체가 실패한다 (application.yml auth.jwt.secret).
+      JWT_SECRET: ${JWT_SECRET:?~/apps/.env 에 JWT_SECRET 가 없다 — openssl rand -base64 48}
+      # 배포된 클라이언트(Vercel) 주소. 없으면 잠정값 localhost:5173이라 브라우저가 CORS에 막힌다.
+      AUTH_ALLOWED_ORIGINS: ${AUTH_ALLOWED_ORIGINS:?~/apps/.env 에 AUTH_ALLOWED_ORIGINS 가 없다}
       AI_BASE_URL: http://ai:8000
+      # ai의 INTERNAL_SHARED_SECRET과 같은 값이어야 한다. 아래에서 같은 키를 넘겨 어긋날 수 없게 한다.
+      AI_SHARED_SECRET: ${AI_SHARED_SECRET:?~/apps/.env 에 AI_SHARED_SECRET 가 없다}
+      # 데모 로그인(E-15). 카카오 콘솔 등록 전에는 유일한 로그인 수단이라 기본을 켜 둔다.
+      # 닫으려면 ~/apps/.env 에 DEMO_ACCOUNT_ENABLED=false.
+      DEMO_ACCOUNT_ENABLED: ${DEMO_ACCOUNT_ENABLED:-true}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      KAKAO_REDIRECT_URIS: ${KAKAO_REDIRECT_URIS:-}
+      # 규칙 엔진 파라미터 (07 §7). 비어 있으면 null로 바인딩된다 — 값이 생기면 ~/apps/.env 에 넣는다.
+      RULES_SHRINKAGE_K: ${RULES_SHRINKAGE_K:-}
+      RULES_ROLLUP_MIN_COUNT: ${RULES_ROLLUP_MIN_COUNT:-}
+      RULES_PENDING_MIN_COUNT: ${RULES_PENDING_MIN_COUNT:-}
+      RULES_AXIS_X_BOUNDARY: ${RULES_AXIS_X_BOUNDARY:-}
+      RULES_AXIS_Y_BOUNDARY: ${RULES_AXIS_Y_BOUNDARY:-}
     # 127.0.0.1 바인딩 — 바깥에서 직접 못 들어온다. Nginx만 통과한다.
     ports:
       - "127.0.0.1:8080:8080"
@@ -41,12 +65,15 @@ services:
         condition: service_healthy
 
   ai:
-    image: jinocc/sottaejap-ai:latest
+    image: jinocc/sottaejap-ai:${AI_TAG:-latest}
     restart: unless-stopped
-    env_file: ../../.env
     environment:
       SPRING_BASE_URL: http://server:8080
+      # server의 AI_SHARED_SECRET과 같은 키를 넘긴다. 두 값이 갈라질 수 없다.
+      INTERNAL_SHARED_SECRET: ${AI_SHARED_SECRET:?~/apps/.env 에 AI_SHARED_SECRET 가 없다}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?~/apps/.env 에 OPENAI_API_KEY 가 없다}
       # 금융 RAG용 (07 §3). asyncpg 형식이라 jdbc: 접두사를 쓰지 않는다.
+      # DB_PASSWORD 에 @ : / # ? 를 쓰면 이 URL이 깨진다 — 영문·숫자만 쓴다.
       DATABASE_URL: postgresql://sottaejap:${DB_PASSWORD}@db:5432/sottaejap
     ports:
       - "127.0.0.1:8000:8000"
