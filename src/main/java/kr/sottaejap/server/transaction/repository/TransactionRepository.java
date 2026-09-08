@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
@@ -34,4 +35,32 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
                              @Param("to") OffsetDateTime to,
                              @Param("category") String category,
                              Pageable pageable);
+
+    Optional<Transaction> findByIdAndUserId(Long id, long userId);
+
+    /** analysisYearMonth = 최근 거래월 (E-60). */
+    Optional<Transaction> findTopByUserIdOrderByOccurredAtDesc(long userId);
+
+    /**
+     * 회고 후보 ⓪ — 이미 회고된 거래를 빼고, D+1 컷오프(toExclusive) 이전 거래를 최신순으로 (E-62 ①②).
+     * from은 채팅 3일 창·날짜 지정용이며 없으면 상한 없이 본다 (E-48).
+     */
+    @Query("""
+            select t from Transaction t
+            where t.userId = :userId
+              and t.occurredAt < :toExclusive
+              and (cast(:from as Timestamp) is null or t.occurredAt >= :from)
+              and not exists (select r.id from Retrospect r where r.transactionId = t.id)
+            order by t.occurredAt desc, t.id desc
+            """)
+    List<Transaction> findCandidates(@Param("userId") long userId,
+                                     @Param("from") OffsetDateTime from,
+                                     @Param("toExclusive") OffsetDateTime toExclusive,
+                                     Pageable pageable);
+
+    /** 이상치 기준선 — 최근 N일 거래 전부 (E-62 ④). 그룹화는 서비스가 한다. */
+    List<Transaction> findAllByUserIdAndOccurredAtGreaterThanEqual(long userId, OffsetDateTime from);
+
+    /** 묶음 명명 표본 — 이 묶음에 배정된 거래 (E-64). */
+    List<Transaction> findAllByBehaviorIdOrderByOccurredAtDesc(Long behaviorId);
 }
