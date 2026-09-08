@@ -1,7 +1,14 @@
 package kr.sottaejap.server.rules;
 
+import kr.sottaejap.server.common.enums.EvaluationStatus;
+import kr.sottaejap.server.common.enums.Quadrant;
 import kr.sottaejap.server.common.enums.Satisfaction;
 import kr.sottaejap.server.common.enums.TimeSlot;
+import kr.sottaejap.server.common.enums.Verdict;
+import kr.sottaejap.server.rules.aggregate.AnalysisAggregator;
+import kr.sottaejap.server.rules.aggregate.AnalysisSummary;
+import kr.sottaejap.server.rules.aggregate.CategorySummary;
+import kr.sottaejap.server.rules.aggregate.ClusterSnapshot;
 import kr.sottaejap.server.rules.cluster.ClusterEngine;
 import kr.sottaejap.server.rules.cluster.ClusterEvaluation;
 import kr.sottaejap.server.rules.cluster.ClusterRecomputeInput;
@@ -102,6 +109,27 @@ class RuleEngineDeterminismTest {
         assertEquals(List.of("교통|||", "배달|NIGHT||", "카페|DAY||", "교통||필수품|혼자", "배달|NIGHT|충동|혼자", "카페|DAY|휴식·취미|친구"),
                 first.clusters().stream().map(ClusterEvaluation::clusterKey).toList());
         assertEquals(-1.0 / 3, first.userAverage(), 1e-9);
+    }
+
+    /** AnalysisAggregator 골든 케이스 — 같은 묶음·같은 예산이면 같은 집계 (NFR-01 · E-73). */
+    @Test
+    void analysisAggregator_고정입력_고정출력() {
+        List<ClusterSnapshot> clusters = List.of(
+                new ClusterSnapshot(1L, "배달|NIGHT||", "심야 배달", null, 4, -0.42, 12000, 96000, 8, 0.096,
+                        EvaluationStatus.RESOLVED, Quadrant.MINOR, Verdict.ADJUST),
+                new ClusterSnapshot(2L, "카페|DAY||", "낮 카페", null, 5, 0.71, 28000, 168000, 6, 0.168,
+                        EvaluationStatus.RESOLVED, Quadrant.PROTECT, Verdict.SUSTAIN),
+                new ClusterSnapshot(3L, "편의점|||", null, null, 1, -0.05, 3000, 24000, 8, 0.024,
+                        EvaluationStatus.PENDING, null, null));
+
+        AnalysisSummary first = AnalysisAggregator.aggregate(clusters, 1_000_000);
+        AnalysisSummary second = AnalysisAggregator.aggregate(clusters, 1_000_000);
+
+        assertEquals(first, second);
+        assertEquals(List.of("카페", "배달", "편의점"),
+                first.byCategory().stream().map(CategorySummary::category).toList());
+        assertEquals(0.096, first.byVerdict().get(1).share(), 1e-9);
+        assertEquals(24000, first.pending().monthlyTotalAmount());
     }
 
     private static void collectViolations(Path path, List<String> violations) {
