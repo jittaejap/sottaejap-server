@@ -267,3 +267,21 @@ EC2 구성은 `deploy/docker-compose.yml`이 정본입니다. `sottaejap-ai`도 
 cd ~/apps/sottaejap-server/deploy
 SERVER_TAG=<이전 커밋 해시> docker compose --env-file ~/apps/.env up -d server
 ```
+
+### 이미지 정리
+
+배포가 성공하면 워크플로가 **이 저장소가 올린 이미지**(`jinocc/sottaejap-server`) 중 방금 띄운 태그와
+`latest`를 뺀 나머지를 지웁니다. `sottaejap-ai`도 자기 이미지만 같은 방식으로 지웁니다.
+한 저장소의 배포가 다른 저장소의 이미지를 지우지 않게 하기 위해서입니다.
+
+**그래서 두 저장소 어느 쪽도 아닌 이미지는 자동으로 지워지지 않습니다.** 예를 들어
+`deploy/docker-compose.yml`의 `pgvector/pgvector:pg18`을 다음 버전으로 올리면, 옛 `pg18` 이미지는
+EC2에 그대로 남습니다. 루트 볼륨이 8GB라 사람이 직접 치워야 합니다.
+
+```bash
+# EC2에서 — 무엇이 얼마나 남아 있는지 먼저 본다
+docker image ls
+df -h /
+# 확인한 뒤 특정 이미지만 지운다
+docker rmi pgvector/pgvector:<옛 태그>
+```

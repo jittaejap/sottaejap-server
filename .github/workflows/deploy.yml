@@ -106,9 +106,19 @@ jobs:
             if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
               echo "server UP ($SERVER_TAG)"
               # 커밋마다 이미지가 쌓인다. 프리티어 루트 볼륨은 8GB다.
-              # 실행 중이 아닌 이미지만 지운다 — 되돌릴 이미지는 Docker Hub에 남아 있다.
+              # prune -af 는 호스트의 모든 미사용 이미지를 지운다 — sottaejap-ai가
+              # 배포한 이미지까지 같이 사라진다. 이 저장소가 올린 것만 골라 지운다.
+              # 되돌릴 이미지는 Docker Hub에 남아 있어 여기서 지워도 안전하다.
               # 정리에 실패해도 서버는 떠 있다. 배포를 빨갛게 만들지 않는다.
-              docker image prune -af || true
+              docker image ls --filter 'reference=jinocc/sottaejap-server' --filter 'dangling=false' \
+                --format '{{.Repository}}:{{.Tag}}' \
+                | grep -vxF -e "jinocc/sottaejap-server:$SERVER_TAG" -e 'jinocc/sottaejap-server:latest' \
+                | xargs -r docker rmi || true
+              # latest 를 남기는 이유: compose 가 ${SERVER_TAG:-latest} 라, 사람이 EC2에서
+              # SERVER_TAG 없이 up -d server 를 치면 latest 로 뜬다. 그 경로의 안전판이다.
+              # 태그가 떨어진 레이어를 마저 지운다. -a 가 없어 다른 서비스의 태그 있는
+              # 이미지는 건드리지 않는다. 태그 없는 레이어는 호스트 공용이라 같이 정리된다.
+              docker image prune -f || true
               exit 0
             fi
             sleep 5
