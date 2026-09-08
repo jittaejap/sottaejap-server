@@ -26,8 +26,13 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    /** 카카오 이메일은 선택 동의라 비어 있을 수 있다 (E-56 · V4). 이메일로 계정을 합치지 않는다. */
+    @Column
     private String email;
+
+    /** 마이페이지 프로필 표시 이름 (E-56 · V4). null이면 클라이언트가 "사용자"로 대체한다. */
+    @Column(length = 100)
+    private String nickname;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "auth_provider", nullable = false)
@@ -52,4 +57,16 @@ public class User {
 
     @Column(name = "onboarding_completed", nullable = false)
     private boolean onboardingCompleted;
+
+    /** 소셜 첫 로그인 (E-56). 별도 회원가입 API 없이 여기서 사용자가 생긴다. D+1 · 온보딩 미완료로 시작한다. */
+    public static User social(AuthProvider authProvider, String providerUserId, String nickname, String email) {
+        User user = new User();
+        user.authProvider = authProvider;
+        user.providerUserId = providerUserId;
+        user.nickname = nickname;
+        user.email = email;
+        user.retrospectDelayDays = 1;
+        user.onboardingCompleted = false;
+        return user;
+    }
 }
