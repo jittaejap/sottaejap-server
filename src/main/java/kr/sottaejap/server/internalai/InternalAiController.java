@@ -8,6 +8,8 @@ import kr.sottaejap.server.internalai.dto.InternalReflectionRequest;
 import kr.sottaejap.server.retrospect.dto.MemoryResponse;
 import kr.sottaejap.server.retrospect.dto.RetrospectSaveResponse;
 import kr.sottaejap.server.retrospect.service.RetrospectService;
+import kr.sottaejap.server.suggestion.dto.SuggestionListResponse;
+import kr.sottaejap.server.suggestion.service.SuggestionService;
 import kr.sottaejap.server.transaction.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -26,7 +28,7 @@ import java.util.Map;
 /**
  * AI `SpringClient` 6개 메서드와 1:1인 내부 조회·저장 API (05 §3). 응답은 camelCase 봉투다.
  *
- * <p>v2.5: analysis도 실구현 (E-73). suggestions만 아직 도메인이 없어 빈 목록이다.
+ * <p>v2.6: 여섯 경로가 모두 실구현이다 — 빈 목록 스텁이 남아 있지 않다 (E-73 · E-81).
  * 응답 `data`는 반드시 object여야 AI `SpringClient`가 봉투를 벗긴다.
  */
 @RestController
@@ -37,6 +39,7 @@ public class InternalAiController {
     private final TransactionService transactionService;
     private final RetrospectService retrospectService;
     private final AnalysisService analysisService;
+    private final SuggestionService suggestionService;
 
     /** SpringClient.get_transactions — 업로드된 거래를 그대로 돌려준다. 계산·판정은 없다. */
     @GetMapping("/transactions")
@@ -72,10 +75,13 @@ public class InternalAiController {
         return ApiResponse.success(analysisService.internalAnalysis(userId));
     }
 
-    /** SpringClient.get_action_plan — 외부 GET /suggestions와 동일 */
+    /**
+     * SpringClient.get_action_plan — 외부 GET /suggestions의 기본 목록(PROPOSED · ADOPTED)과 같다.
+     * AI는 `suggestions[].id`를 `state.suggestion_ids`와 대조해 고른다 (E-81).
+     */
     @GetMapping("/suggestions")
-    public ApiResponse<Map<String, Object>> getActionPlan(@PathVariable long userId) {
-        return ApiResponse.success(Map.of("suggestions", List.of()));
+    public ApiResponse<SuggestionListResponse> getActionPlan(@PathVariable long userId) {
+        return ApiResponse.success(suggestionService.internalList(userId));
     }
 
     /** SpringClient.get_memory — 개인 소비 메모리 요약 */

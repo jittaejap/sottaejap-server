@@ -41,6 +41,10 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 
 - Spring → AI: `ai/AiClient`가 `POST /chat` 하나만 부릅니다. 작업 종류는 `task_context.task`입니다.
   경계는 snake_case이고 변환은 `ai/dto`의 `@JsonProperty`에서만 합니다. 다른 곳에서 AI를 부르지 않습니다.
+- **제안은 재계산 파생 행입니다** (E-81). `suggestions`를 만드는 API가 없습니다 — 회고 저장 때 도는
+  `ClusterRecomputeServiceImpl.recomputeAll`이 끝에서 `SuggestionSyncService.sync`를 부르고, 그것이
+  대상 묶음마다 `PROPOSED` 한 줄을 두고 제자리 갱신합니다. `ADOPTED`·`REJECTED`는 건드리지 않습니다.
+  같은 묶음에 열린 제안이 둘일 수 없다는 것은 V7의 부분 유일 인덱스가 지킵니다.
 - AI → Spring: `internalai/InternalAiController`의 `/internal/ai/users/{userId}/*` 6종. `X-Internal-Secret`
   헤더를 `InternalSecretFilter`가 검사합니다. **시크릿이 비어 있으면 모든 요청을 거부합니다** — "로컬이니까" 비워 두면
   ai-ping은 되지만 AI의 역호출은 전부 401입니다.

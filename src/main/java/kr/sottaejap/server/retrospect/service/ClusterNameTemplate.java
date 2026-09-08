@@ -42,6 +42,14 @@ public final class ClusterNameTemplate {
         return truncate(category);
     }
 
+    /**
+     * 화면에 쓸 이름. AI가 아직 이름을 붙이지 않았으면 묶음 키로 만든 이름을 쓴다 (E-64).
+     * 재계산이 명명보다 먼저 끝나므로 이름 없는 묶음이 잠깐 존재한다 — 지도·제안이 같은 판단을 써야 한다.
+     */
+    public static String displayNameOr(String displayName, String clusterKey) {
+        return displayName == null || displayName.isBlank() ? nameFor(clusterKey) : displayName;
+    }
+
     /** AI가 지은 이름에도 같은 길이 규격을 적용한다 (FR-05-05). */
     public static String truncate(String name) {
         return name.length() <= MAX_NAME_LENGTH ? name : name.substring(0, MAX_NAME_LENGTH);

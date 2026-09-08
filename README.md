@@ -56,6 +56,8 @@ src/main/java/kr/sottaejap/server/
 ├── notification/ 인앱 알림 목록·읽음 · Web Push 구독 · 결제 시각 스케줄로 회고 요청 1건 생성 (FR-10)
 ├── retrospect/   회고 저장 · 후보 선별 · 대화 턴 프록시 · BehaviorCluster upsert (E-57~E-66)
 ├── analysis/     만족도 지도 · 소비 분석 · 묶음 조회 · '나만의 특징' 문장 (E-72~E-76)
+├── suggestion/   재계산이 만드는 조정 제안 · 채택 · 거절 (E-81 · E-82)
+├── goal/         목표 · 달성률 · 채택 제안 합산 (E-83)
 ├── chat/         대화 저장 · 금융 지식 Q&A 프록시 (05 #24 · FR-12)
 ├── rules/        ★ 규칙 엔진 — cluster · shrinkage · verdict · candidate · aggregate · saving · RuleParams (정민규)
 ├── ai/           ★ AiClient — AI POST /chat 호출의 유일한 지점 · snake_case 변환
