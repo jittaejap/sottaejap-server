@@ -1,4 +1,4 @@
-package kr.sottaejap.server.internalai;
+package kr.sottaejap.server.internalai.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import kr.sottaejap.server.common.enums.Satisfaction;

@@ -3,6 +3,7 @@ package kr.sottaejap.server.internalai;
 import kr.sottaejap.server.common.exception.BusinessException;
 import kr.sottaejap.server.common.exception.CommonErrorCode;
 import kr.sottaejap.server.common.response.ApiResponse;
+import kr.sottaejap.server.internalai.dto.InternalReflectionRequest;
 import kr.sottaejap.server.transaction.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
