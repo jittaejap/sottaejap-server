@@ -62,6 +62,10 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 
 - `POST /retrospects`는 `RetrospectWriter`(@Transactional — 검증 · insert · 사용자 전체 재계산)를 **커밋한 뒤** `ClusterNamingService`가
   AI `CLUSTER_NAMING`을 부릅니다. `RetrospectServiceImpl.save`에 `@Transactional`을 붙이면 AI 타임아웃(15초) 동안 DB 잠금을 잡습니다 — 붙이지 마십시오.
+- 같은 자리에서 `SuggestionReasonService`가 제안 이유(`ACTION_PLAN`)도 받지만 **`@Async`로 응답 밖에서 돕니다**. 이유는
+  `RetrospectSaveResponse`에 실리지 않고, 동기로 두면 저장 응답이 명명 15초 + 이유 15초로 최악 30초가 되어 클라이언트 공통
+  타임아웃 20초가 먼저 끊습니다 — 회고는 이미 커밋돼 있어 사용자만 실패로 봅니다. 응답 시간에 드는 AI 왕복은 **명명 1회**뿐입니다.
+  이유 채우기는 넘어온 **리프** id에서 `parentId`를 따라가 제안이 달린 묶음을 찾습니다 — 롤업되면 제안은 상위 묶음에 붙습니다 (E-59 · E-72).
 - 재계산은 매번 **사용자 전체 묶음**입니다 (E-61). 결과에서 빠진 묶음은 지우지 않고 `markEmpty()`로 값만 비웁니다 — 회고 수 0인 묶음은 지도·메모리에서 뺍니다.
 - 후보 `reason`은 Spring 템플릿(`ReasonTemplate`)이고 AI `app/ai/fallback.py`와 문장이 같아야 합니다 (E-62). `POST /retrospects/chat`은 회고 행을 만들지 않습니다 (E-63).
 - `skip`(05 #9) 엔드포인트는 없습니다 (E-65). 규칙 파라미터는 `application.yml` 잠정값이 기본이고 `RULES_*`로 덮어씁니다 (E-57).

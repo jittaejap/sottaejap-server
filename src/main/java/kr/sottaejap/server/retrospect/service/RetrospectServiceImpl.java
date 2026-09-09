@@ -27,7 +27,7 @@ import java.util.List;
  * /retrospects/* 진입점. {@link #save}는 일부러 @Transactional이 아니다 — 쓰기({@link RetrospectWriter})를
  * 커밋한 뒤 AI 명명({@link ClusterNamingService})과 제안 이유({@link SuggestionReasonService})를 부르므로
  * DB 트랜잭션이 AI 타임아웃(15초) 동안 열려 있지 않다 (E-64).
- * 둘 다 응답에 실리는 리프에만 AI를 쓰므로 저장 1건의 AI 왕복은 명명 1회 + 이유 1회다.
+ * <b>응답 시간에 드는 AI 왕복은 명명 1회뿐이다</b> — 이유는 응답에 실리지 않아 {@code @Async}로 빠진다.
  */
 @Service
 @RequiredArgsConstructor
@@ -50,6 +50,7 @@ public class RetrospectServiceImpl implements RetrospectService {
         Long leafId = retrospectWriter.write(userId, request);
         clusterNamingService.nameUnnamed(userId, leafId);
         // 이름을 지은 뒤에 부른다 — 이유 문장이 묶음 이름을 부르므로, 먼저 부르면 템플릿 이름이 문장에 박힌다.
+        // 비동기라 여기서 기다리지 않는다. 이유가 비면 화면이 템플릿으로 채운다 (E-38).
         suggestionReasonService.explainProposed(userId, leafId);
         BehaviorCluster leaf = behaviorClusterRepository.findById(leafId)
                 .orElseThrow(() -> new IllegalStateException("재계산 직후 리프 묶음이 없다: " + leafId));
