@@ -8,6 +8,7 @@ import kr.sottaejap.server.onboarding.dto.OnboardingCompleteResponse;
 import kr.sottaejap.server.onboarding.dto.OnboardingStartRequest;
 import kr.sottaejap.server.retrospect.domain.BehaviorCluster;
 import kr.sottaejap.server.retrospect.dto.CandidateListResponse;
+import kr.sottaejap.server.retrospect.dto.CandidateView;
 import kr.sottaejap.server.retrospect.repository.BehaviorClusterRepository;
 import kr.sottaejap.server.retrospect.service.ClusterRecomputeService;
 import kr.sottaejap.server.transaction.domain.Transaction;
@@ -20,7 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -111,7 +113,37 @@ class OnboardingServiceImplTest {
     void sampleSize가_100을_넘으면_400이_아니라_100으로_자른다() {
         when(transactionRepository.findCandidates(eq(USER_ID), any(), any(), any())).thenReturn(transactions(150));
 
-        assertEquals(100, onboardingService.start(USER_ID, request(200)).candidates().size());
+        List<CandidateView> candidates = onboardingService.start(USER_ID, request(200)).candidates();
+
+        // 개수만 세면 편향이 드러나지 않는다 — 마지막 표본이 목록 끝까지 갔는지 함께 본다.
+        assertEquals(100, candidates.size());
+        assertEquals(List.of(1L, 149L),
+                List.of(candidates.getFirst().transactionId(), candidates.getLast().transactionId()));
+    }
+
+    @Test
+    void 전체가_표본수의_배수가_아니어도_가장_오래된_구간까지_덮는다() {
+        // 59건에서 20건. 간격을 정수로 먼저 구하면 간격 2로 39번째에서 멈춰 뒤 20건(34%)이 통째로 빠졌다.
+        when(transactionRepository.findCandidates(eq(USER_ID), any(), any(), any())).thenReturn(transactions(59));
+
+        List<Long> picked = onboardingService.start(USER_ID, request(20)).candidates().stream()
+                .map(candidate -> candidate.transactionId()).toList();
+
+        assertEquals(20, picked.size());
+        assertEquals(20, Set.copyOf(picked).size());
+        assertEquals(List.of(1L, 57L), List.of(picked.getFirst(), picked.getLast()));
+    }
+
+    @Test
+    void 전체가_표본수의_두_배_미만이어도_앞에서_자르지_않는다() {
+        // 25건에서 20건. 간격이 1이 되면 최신 20건 그대로라 막으려던 "앞에서 자르기"와 같아진다.
+        when(transactionRepository.findCandidates(eq(USER_ID), any(), any(), any())).thenReturn(transactions(25));
+
+        List<Long> picked = onboardingService.start(USER_ID, request(20)).candidates().stream()
+                .map(candidate -> candidate.transactionId()).toList();
+
+        assertEquals(20, picked.size());
+        assertEquals(List.of(1L, 24L), List.of(picked.getFirst(), picked.getLast()));
     }
 
     @Test
@@ -123,7 +155,7 @@ class OnboardingServiceImplTest {
         ArgumentCaptor<OffsetDateTime> from = ArgumentCaptor.forClass(OffsetDateTime.class);
         ArgumentCaptor<OffsetDateTime> toExclusive = ArgumentCaptor.forClass(OffsetDateTime.class);
         verify(transactionRepository)
-                .findCandidates(eq(USER_ID), from.capture(), toExclusive.capture(), eq(Pageable.unpaged()));
+                .findCandidates(eq(USER_ID), from.capture(), toExclusive.capture(), eq(PageRequest.of(0, 2_000)));
         assertEquals(OffsetDateTime.parse("2026-06-01T00:00+09:00"), from.getValue());
         assertEquals(OffsetDateTime.parse("2026-08-01T00:00+09:00"), toExclusive.getValue());
     }
