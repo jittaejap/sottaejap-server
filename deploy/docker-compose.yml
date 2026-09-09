@@ -55,7 +55,7 @@ services:
       # application.yml 의 잠정값이 덮여 회고 저장 첫 요청이 500(RuleParamMissingException)이 된다.
       # 덮어쓸 때만 ~/apps/.env 에 키를 추가한다 (.env.example §규칙 파라미터).
       #
-      # 힙을 명시한다 (07 §12 · 01 E-110). 적지 않으면 MaxRAMPercentage 기본 25%라 힙이
+      # 힙을 명시한다 (07 §12 · 01 E-111). 적지 않으면 MaxRAMPercentage 기본 25%라 힙이
       # "컨테이너에 보이는 메모리"에 딸려 다닌다 — 아래 mem_limit 을 고치는 순간 힙도 같이 움직인다.
       # Dockerfile 이 아니라 여기에 두는 이유: 같은 이미지를 로컬에서도 쓴다. ENTRYPOINT 에 박으면
       # 개발 머신도 512MB 로 묶인다. 운영 사이징은 운영 compose 가 갖는다.

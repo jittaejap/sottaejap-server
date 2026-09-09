@@ -10,6 +10,7 @@ import org.apache.poi.ss.usermodel.DateUtil;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
@@ -18,10 +19,16 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -339,60 +346,171 @@ class TransactionFileParserTest {
                 () -> parser.parseCsv(utf8(csvRows(TransactionFileParser.MAX_ROWS + 1))));
     }
 
-    /** XLSX도 같은 지점에서 센다 — 형식마다 상한이 다르면 같은 내역을 CSV로 냈을 때와 결과가 갈린다. */
+    /**
+     * XLSX도 같은 지점에서 센다 — 형식마다 상한이 다르면 같은 내역을 CSV로 냈을 때와 결과가 갈린다.
+     *
+     * <p>한 행 넘긴 파일은 선계수(물리적 행 문턱)에 걸리지 않는다 — 머리글 탐색 여유(30줄)만큼 느슨하게
+     * 잡아야 상한 안의 파일이 새로 거절되지 않기 때문이다. 그 구간은 워크북을 열어 정확히 센다.
+     */
     @Test
     void XLSX도_같은_상한으로_거절한다() {
-        byte[] file = workbook(sheet -> {
-            Row header = sheet.createRow(0);
-            header.createCell(0).setCellValue("거래일시");
-            header.createCell(1).setCellValue("가맹점명");
-            header.createCell(2).setCellValue("금액");
-            for (int i = 1; i <= TransactionFileParser.MAX_ROWS + 1; i++) {
-                Row row = sheet.createRow(i);
-                row.createCell(0).setCellValue("2026-08-25 20:22");
-                row.createCell(1).setCellValue("○○마트");
-                row.createCell(2).setCellValue(12000);
-            }
-        });
+        TransactionFileParser.TooManyRowsException rejected = assertThrows(
+                TransactionFileParser.TooManyRowsException.class,
+                () -> parser.parseXlsx(oneSheetWorkbook(TransactionFileParser.MAX_ROWS + 1)));
 
-        assertThrows(TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
+        assertTrue(rejected.getMessage().startsWith("머리글 아래 행이"), rejected.getMessage());
     }
 
     /**
-     * 이슈 #58 — XLSX는 시트를 <b>열기 전에</b> 센다. 열고 나서 세면 상한을 넘긴 파일이
-     * {@code OutOfMemoryError}로 500이 된다 (운영 힙에서 200,000행 · 3.2MB xlsx 실측).
-     *
-     * <p>픽스처는 <b>어느 장도 혼자서는 상한을 넘지 않지만 합치면 넘는</b> 두 장짜리 파일이다.
-     * 워크북을 연 뒤 세는 종전 경로는 첫 장만 보므로 이 파일을 통과시킨다 — 그러니 여기서 거절이
-     * 나온다는 것은 열기 전에 <b>워크북 전체</b>를 셌다는 뜻이다. {@code XSSFWorkbook}이 모든 장을
-     * 객체 모델로 올리는 이상 메모리를 정하는 것은 첫 장이 아니라 전체 행수다.
+     * 이슈 #58 — 상한을 크게 넘긴 파일은 워크북을 <b>열기 전에</b> 걸러야 한다. 열고 나서 세면
+     * {@code OutOfMemoryError}가 나 400이 아니라 500이 된다. 두 경로가 내는 예외는 같은 종류라
+     * <b>메시지</b>로만 갈린다 — "첫 시트의 물리적 행"이면 열기 전, "머리글 아래 행"이면 연 뒤다.
      */
     @Test
-    void XLSX는_시트를_열기_전에_워크북_전체_행수로_거절한다() {
-        int perSheet = TransactionFileParser.MAX_ROWS / 2 + 100;
-        byte[] file = twoSheetWorkbook(perSheet);
+    void XLSX는_상한을_크게_넘으면_열기_전에_거절한다() {
+        TransactionFileParser.TooManyRowsException rejected = assertThrows(
+                TransactionFileParser.TooManyRowsException.class,
+                () -> parser.parseXlsx(oneSheetWorkbook(TransactionFileParser.MAX_ROWS + 100)));
 
-        assertThrows(TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
+        assertTrue(rejected.getMessage().startsWith("첫 시트의 물리적 행"), rejected.getMessage());
     }
 
-    /** 장마다 {@code rows}행씩 든 두 장짜리 워크북. 머리글은 첫 장에만 둔다 — 내역은 첫 장이다. */
-    private static byte[] twoSheetWorkbook(int rows) {
+    /**
+     * 이슈 #58 — 선계수는 {@code <row} 다음 <b>바이트</b>로 여는 태그를 가른다. XML 규격에서 태그 이름
+     * 뒤의 공백은 {@code #x20 | #x9 | #xD | #xA} 넷 다이므로 띄어쓰기만 인정하면 {@code <row\nr="1">}을
+     * 쓴 정상 워크시트가 0행으로 세어진다. 0은 어떤 상한도 넘지 못해 <b>가드가 말없이 꺼지고</b>,
+     * 파일은 워크북을 여는 경로로 되돌아가 OOM → 500이 된다.
+     *
+     * <p>거절 여부만 보면 두 경로가 구별되지 않는다 — 연 뒤에 세는 경로도 결국 400을 낸다.
+     * 그래서 여기서도 <b>메시지</b>로 어느 경로가 걸렀는지 확인한다.
+     */
+    @Test
+    void XLSX의_row_태그를_줄바꿈으로_띄워도_열기_전에_센다() {
+        byte[] file = withRowTagSeparator(oneSheetWorkbook(TransactionFileParser.MAX_ROWS + 100), "\n");
+
+        TransactionFileParser.TooManyRowsException rejected = assertThrows(
+                TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
+
+        assertTrue(rejected.getMessage().startsWith("첫 시트의 물리적 행"), rejected.getMessage());
+    }
+
+    /**
+     * 뒷장은 첫 장에 <b>더하지 않는다.</b> 읽는 것은 첫 장뿐이라, 안내·약관 장의 줄을 계약 상한에 합치면
+     * 상한 안(15,000행)의 내역을 담은 파일이 "거래내역이 너무 많아요"로 거절된다 (PR #63 리뷰).
+     */
+    @Test
+    void XLSX는_뒷장이_있어도_첫_장이_상한_안이면_읽는다() {
+        byte[] file = twoSheetWorkbook(15_000, 6_000);
+
+        assertEquals(15_000, parser.parseXlsx(file).rows().size());
+    }
+
+    /**
+     * 뒷장이 만드는 것은 계약 문제가 아니라 <b>메모리</b> 문제다. {@code XSSFWorkbook}은 첫 장만 쓰더라도
+     * 모든 장을 객체 모델로 올리므로, 뒷장에 큰 시트를 숨긴 파일은 열자마자 {@code OutOfMemoryError} →
+     * 500이 된다. 열기 전에 워크시트 XML 크기로 막는다.
+     *
+     * <p>픽스처의 첫 장은 세 줄뿐이라 <b>계약 상한에는 걸리지 않는다</b> — 여기서 거절이 나온다는 것은
+     * 행이 아니라 크기로 걸렀다는 뜻이다.
+     */
+    @Test
+    void XLSX는_열면_힙이_모자랄_크기의_뒷장을_열기_전에_거절한다() {
+        byte[] file = workbookWithLargeSecondSheet();
+
+        TransactionFileParser.TooManyRowsException rejected = assertThrows(
+                TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
+
+        assertTrue(rejected.getMessage().startsWith("워크시트 XML이"), rejected.getMessage());
+    }
+
+    /** 머리글 아래 {@code rows}행이 든 한 장짜리 워크북. */
+    private static byte[] oneSheetWorkbook(int rows) {
+        return workbook(sheet -> {
+            header(sheet, 0, "거래일시", "가맹점명", "금액");
+            fill(sheet, 1, rows);
+        });
+    }
+
+    /** 첫 장에 내역 {@code first}행, 뒷장에 안내 {@code second}행이 든 워크북. 머리글은 첫 장에만 둔다. */
+    private static byte[] twoSheetWorkbook(int first, int second) {
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
-            for (String name : List.of("이용내역", "안내")) {
-                Sheet sheet = workbook.createSheet(name);
-                header(sheet, 0, "거래일시", "가맹점명", "금액");
-                for (int i = 1; i <= rows; i++) {
-                    Row row = sheet.createRow(i);
-                    row.createCell(0).setCellValue("2026-08-25 20:22");
-                    row.createCell(1).setCellValue("○○마트");
-                    row.createCell(2).setCellValue(12000);
+            Sheet transactions = workbook.createSheet("이용내역");
+            header(transactions, 0, "거래일시", "가맹점명", "금액");
+            fill(transactions, 1, first);
+            fill(workbook.createSheet("이용안내"), 0, second);
+            workbook.write(bytes);
+            return bytes.toByteArray();
+        } catch (IOException cannotWrite) {
+            throw new UncheckedIOException(cannotWrite);
+        }
+    }
+
+    /**
+     * 첫 장은 세 줄, 뒷장은 워크시트 XML이 상한(32MB)을 넘는 워크북.
+     *
+     * <p>메모리를 아끼려고 {@link SXSSFWorkbook}(창 100행)으로 쓴다 — 픽스처를 만드느라 테스트 JVM이
+     * 먼저 OOM으로 죽으면 확인하려던 것을 확인하지 못한다. 칸을 50개로 넓혀 행수를 줄인다.
+     */
+    private static byte[] workbookWithLargeSecondSheet() {
+        try (SXSSFWorkbook workbook = new SXSSFWorkbook(100);
+             ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+            Sheet transactions = workbook.createSheet("이용내역");
+            header(transactions, 0, "거래일시", "가맹점명", "금액");
+            fill(transactions, 1, 2);
+            Sheet large = workbook.createSheet("이용안내");
+            for (int i = 0; i < 12_000; i++) {
+                Row row = large.createRow(i);
+                for (int cell = 0; cell < 50; cell++) {
+                    // 같은 글자를 반복하면 압축비가 100배를 넘어 POI가 zip bomb으로 먼저 거절한다.
+                    row.createCell(cell).setCellValue("이용안내 " + i + "-" + cell + " 문구가 이어집니다");
                 }
             }
             workbook.write(bytes);
             return bytes.toByteArray();
         } catch (IOException cannotWrite) {
             throw new UncheckedIOException(cannotWrite);
+        }
+    }
+
+    /** {@code from}행부터 {@code rows}줄을 같은 거래로 채운다. */
+    private static void fill(Sheet sheet, int from, int rows) {
+        for (int i = 0; i < rows; i++) {
+            Row row = sheet.createRow(from + i);
+            row.createCell(0).setCellValue("2026-08-25 20:22");
+            row.createCell(1).setCellValue("○○마트");
+            row.createCell(2).setCellValue(12000);
+        }
+    }
+
+    /**
+     * 워크시트 XML의 {@code <row } 뒤 공백을 다른 공백 문자로 바꾼다. POI는 언제나 띄어쓰기를 쓰지만
+     * XML 규격은 넷을 다 허용하므로, 다른 도구가 쓴 파일을 흉내 내려면 zip을 다시 써야 한다.
+     */
+    private static byte[] withRowTagSeparator(byte[] xlsx, String separator) {
+        try {
+            Path original = Files.createTempFile("fixture", ".xlsx");
+            Files.write(original, xlsx);
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            try (ZipFile zip = new ZipFile(original.toFile());
+                 ZipOutputStream rewritten = new ZipOutputStream(bytes)) {
+                for (Enumeration<? extends ZipEntry> entries = zip.entries(); entries.hasMoreElements(); ) {
+                    ZipEntry entry = entries.nextElement();
+                    byte[] part = zip.getInputStream(entry).readAllBytes();
+                    if (entry.getName().startsWith("xl/worksheets/")) {
+                        part = new String(part, StandardCharsets.UTF_8)
+                                .replace("<row ", "<row" + separator)
+                                .getBytes(StandardCharsets.UTF_8);
+                    }
+                    rewritten.putNextEntry(new ZipEntry(entry.getName()));
+                    rewritten.write(part);
+                    rewritten.closeEntry();
+                }
+            }
+            Files.delete(original);
+            return bytes.toByteArray();
+        } catch (IOException cannotRewrite) {
+            throw new UncheckedIOException(cannotRewrite);
         }
     }
 
