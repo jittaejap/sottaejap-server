@@ -288,7 +288,9 @@ self.addEventListener('notificationclick', (event) => {
 ## 배포
 
 `main`에 병합되고 **CI가 통과하면** `.github/workflows/deploy.yml`이 자동으로 배포합니다.
-GitHub Actions가 이미지를 굽고, EC2는 받아서 켜기만 합니다 (프리티어 메모리로는 Gradle 빌드가 죽습니다).
+GitHub Actions가 이미지를 굽고, EC2는 받아서 켜기만 합니다 —
+EC2 한 대(메모리 **1.9 GiB** · swap 2 GiB · 루트 24GB)에 `db` · `server` · `ai`가 같이 떠 있어 Gradle 빌드가 죽습니다.
+메모리 배분과 JVM 힙은 `sottaejap-docs` **07 §12**가 정본입니다.
 
 ```text
 CI 통과 → 이미지 빌드 → Docker Hub push → EC2 SSH → compose 전송 → pull·up -d → 헬스체크
@@ -340,7 +342,7 @@ SERVER_TAG=<이전 커밋 해시> docker compose --env-file ~/apps/.env up -d se
 
 **그래서 두 저장소 어느 쪽도 아닌 이미지는 자동으로 지워지지 않습니다.** 예를 들어
 `deploy/docker-compose.yml`의 `pgvector/pgvector:pg18`을 다음 버전으로 올리면, 옛 `pg18` 이미지는
-EC2에 그대로 남습니다. 루트 볼륨이 8GB라 사람이 직접 치워야 합니다.
+EC2에 그대로 남습니다. 루트 볼륨이 24GB뿐이라 사람이 직접 치워야 합니다.
 
 ```bash
 # EC2에서 — 무엇이 얼마나 남아 있는지 먼저 본다
