@@ -7,6 +7,7 @@ import kr.sottaejap.server.analysis.service.AnalysisService;
 import kr.sottaejap.server.common.enums.AuthProvider;
 import kr.sottaejap.server.common.enums.Satisfaction;
 import kr.sottaejap.server.retrospect.dto.RetrospectSaveRequest;
+import kr.sottaejap.server.retrospect.repository.BehaviorClusterRepository;
 import kr.sottaejap.server.retrospect.service.RetrospectWriter;
 import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse;
@@ -28,6 +29,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,6 +64,8 @@ class TransactionUploadRecomputeIntegrationTest {
     @Autowired
     private TransactionRepository transactionRepository;
     @Autowired
+    private BehaviorClusterRepository behaviorClusterRepository;
+    @Autowired
     private UserRepository userRepository;
     @Autowired
     private AnalysisService analysisService;
@@ -85,9 +89,7 @@ class TransactionUploadRecomputeIntegrationTest {
         assertEquals("2026-07", before.analysisYearMonth());
         assertEquals(36_000, before.points().getFirst().monthlyTotalAmount());
 
-        TransactionUploadResponse uploaded = uploadFacade.upload(userId,
-                new MockMultipartFile("file", "aug.csv", "text/csv", AUGUST_CSV.getBytes(StandardCharsets.UTF_8)));
-        assertEquals(1, uploaded.importedCount());
+        assertEquals(1, uploadFacade.upload(userId, augustCsv()).importedCount());
 
         // 업로드 뒤 — 기준월이 8월로 가고 묶음 행의 8월 합계는 0이다. 재계산이 없으면 여기서 36,000이 남는다.
         InternalAnalysisResponse after = analysisService.internalAnalysis(userId);
@@ -102,11 +104,30 @@ class TransactionUploadRecomputeIntegrationTest {
         verify(aiClient, never()).chat(any());
     }
 
+    /**
+     * 온보딩 3단계(업로드)는 표본 회고 전이라 회고가 0건이다. 재계산은 아무것도 바꾸지 않고 끝나야 한다 (E-96).
+     *
+     * <p>{@code avgSatisfaction}을 함께 확인한다 — 조기 반환이 없으면 규칙 엔진이 빈 입력에 0.0을 내고
+     * 회고를 한 번도 하지 않은 사용자의 평균 만족도에 그 값이 박힌다.
+     */
+    @Test
+    void 회고가_없으면_업로드_뒤_재계산이_아무것도_바꾸지_않는다() {
+        TransactionUploadResponse uploaded = uploadFacade.upload(userId, augustCsv());
+
+        assertEquals(1, uploaded.importedCount());
+        assertEquals(List.of(), behaviorClusterRepository.findAllByUserIdOrderByClusterKeyAsc(userId));
+        assertNull(userRepository.findById(userId).orElseThrow().getAvgSatisfaction());
+    }
+
     /** 같은 키(배달|NIGHT|충동|혼자) 회고 3건 — 보류 임계값 3을 넘겨 RESOLVED · ADJUST가 되고 합계는 36,000원이다. */
     private void writeThreeJulyRetrospects() {
         retrospectWriter.write(userId, request(save("2026-07-20T23:10:00+09:00", 12_000, "upload-it-jul-1")));
         retrospectWriter.write(userId, request(save("2026-07-21T23:20:00+09:00", 15_000, "upload-it-jul-2")));
         retrospectWriter.write(userId, request(save("2026-07-22T23:30:00+09:00", 9_000, "upload-it-jul-3")));
+    }
+
+    private static MockMultipartFile augustCsv() {
+        return new MockMultipartFile("file", "aug.csv", "text/csv", AUGUST_CSV.getBytes(StandardCharsets.UTF_8));
     }
 
     private Transaction save(String occurredAt, int amount, String hash) {

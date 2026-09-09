@@ -18,6 +18,9 @@ import org.springframework.web.multipart.MultipartFile;
  * 파싱에 성공한 CSV를 되돌리지 않는다. {@link kr.sottaejap.server.retrospect.service.RetrospectServiceImpl}이
  * 쓰기와 AI 명명을 가르는 방식과 같다 (E-64).
  *
+ * <p>회고가 0건이면 재계산은 스스로 아무것도 하지 않고 끝난다 (E-96) — 그 판단은
+ * {@code ClusterRecomputeServiceImpl}이 회고를 읽은 자리에서 한다. 여기서 건수를 미리 세지 않는다.
+ *
  * <p>재계산을 {@link TransactionServiceImpl}에 직접 주입할 수는 없다. {@code ClusterRecomputeServiceImpl}이
  * 기준월을 얻으려고 이미 {@link TransactionService}를 물고 있어(E-78) 순환 참조가 되고,
  * {@code spring.main.allow-circular-references}가 기본값 {@code false}라 기동이 죽는다.
@@ -33,10 +36,9 @@ public class TransactionUploadFacade {
 
     public TransactionUploadResponse upload(long userId, MultipartFile file) {
         TransactionUploadResponse response = transactionService.upload(userId, file);
-        // 전량 중복 재업로드는 기준월도 금액도 바꾸지 않는다 — 전체 재계산을 돌릴 이유가 없다.
-        if (response.importedCount() > 0) {
-            recompute(userId);
-        }
+        // 새로 저장된 거래가 0건이어도 재계산한다 (E-96). 전량 중복 재업로드는 재계산이 실패해 어긋난 값이
+        // 남았을 때 사용자가 가장 먼저 하는 행동이라, 여기서 건너뛰면 복구 경로가 막힌다.
+        recompute(userId);
         return response;
     }
 

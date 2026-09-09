@@ -186,6 +186,21 @@ class ClusterRecomputeServiceImplTest {
         verify(retrospectRepository, never()).findAllWithTransactionByUserId(anyLong());
     }
 
+    /**
+     * 회고가 0건이면 낼 묶음도 지울 묶음도 없다 (E-96). 그대로 진행하면 회고를 한 번도 하지 않은 사용자의
+     * {@code avgSatisfaction}에 0을 쓴다 — 업로드가 재계산을 부르게 된 뒤(E-95) 온보딩 3단계가 이 경로다.
+     */
+    @Test
+    void 회고가_없으면_사용자_평균도_제안도_건드리지_않는다() {
+        when(transactionService.analysisYearMonth(USER_ID)).thenReturn(YearMonth.of(2026, 8));
+        when(retrospectRepository.findAllWithTransactionByUserId(USER_ID)).thenReturn(List.of());
+
+        assertEquals(List.of(), service.recomputeAll(USER_ID));
+
+        assertNull(user.getAvgSatisfaction());
+        verifyNoInteractions(behaviorClusterRepository, userRepository, suggestionSyncService);
+    }
+
     private void givenRetrospects(RetrospectWithTransaction... rows) {
         List<RetrospectWithTransaction> list = List.of(rows);
         when(transactionService.analysisYearMonth(USER_ID)).thenReturn(YearMonth.of(2026, 8));
