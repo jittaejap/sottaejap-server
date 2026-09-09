@@ -41,6 +41,22 @@ public class SuggestionServiceImpl implements SuggestionService {
     @Override
     @Transactional(readOnly = true)
     public SuggestionListResponse list(long userId, SuggestionStatus status) {
+        return list(userId, status, true);
+    }
+
+    /** {@code list}를 자기 호출하므로 프록시를 거치지 않는다 — 트랜잭션을 여기에 따로 건다. */
+    @Override
+    @Transactional(readOnly = true)
+    public SuggestionListResponse internalList(long userId) {
+        return list(userId, null, false);
+    }
+
+    /**
+     * @param storedReason 저장된 AI 문장을 쓸지. <b>내부 AI 조회는 항상 {@code false}다</b> — AI가 이 목록의
+     *                     {@code reason}을 프롬프트에 넣으므로, 자기가 쓴 문장을 돌려주면 자기 출력을 근거로
+     *                     삼는다 (E-75 — {@code GET /analysis}에서 {@code highlight}를 뺀 것과 같은 이유).
+     */
+    private SuggestionListResponse list(long userId, SuggestionStatus status, boolean storedReason) {
         List<Suggestion> suggestions = suggestionRepository.findAllByUserId(userId).stream()
                 .filter(suggestion -> status == null
                         ? DEFAULT_STATUSES.contains(suggestion.getStatus())
@@ -57,15 +73,8 @@ public class SuggestionServiceImpl implements SuggestionService {
 
         return new SuggestionListResponse(suggestions.stream()
                 .sorted(order)
-                .map(suggestion -> view(suggestion, clusters.get(suggestion.getBehaviorId())))
+                .map(suggestion -> view(suggestion, clusters.get(suggestion.getBehaviorId()), storedReason))
                 .toList());
-    }
-
-    /** {@code list}를 자기 호출하므로 프록시를 거치지 않는다 — 트랜잭션을 여기에 따로 건다. */
-    @Override
-    @Transactional(readOnly = true)
-    public SuggestionListResponse internalList(long userId) {
-        return list(userId, null);
     }
 
     @Override
@@ -112,6 +121,14 @@ public class SuggestionServiceImpl implements SuggestionService {
         }
     }
 
+    /** AI가 쓴 문장이 있으면 그것을, 없으면 판정 템플릿을 보여준다 (E-38 — ai가 내려가도 목록은 뜬다). */
+    private static String reason(Suggestion suggestion, String name, ClusterSnapshot cluster, boolean storedReason) {
+        if (storedReason && suggestion.getReason() != null) {
+            return suggestion.getReason();
+        }
+        return SuggestionReasonTemplate.reasonFor(name, cluster);
+    }
+
     private ClusterSnapshot clusterOf(Suggestion suggestion) {
         return behaviorClusterRepository.findById(suggestion.getBehaviorId())
                 .map(ClusterSnapshotMapper::toSnapshot)
@@ -126,6 +143,10 @@ public class SuggestionServiceImpl implements SuggestionService {
     }
 
     private SuggestionView view(Suggestion suggestion, ClusterSnapshot cluster) {
+        return view(suggestion, cluster, true);
+    }
+
+    private SuggestionView view(Suggestion suggestion, ClusterSnapshot cluster, boolean storedReason) {
         String name = ClusterNameTemplate.displayNameOr(cluster.displayName(), cluster.clusterKey());
         return new SuggestionView(
                 suggestion.getId(),
@@ -140,6 +161,6 @@ public class SuggestionServiceImpl implements SuggestionService {
                 suggestion.getExpectedSaving(),
                 suggestion.getGoalId(),
                 suggestion.getStatus(),
-                SuggestionReasonTemplate.reasonFor(name, cluster));
+                reason(suggestion, name, cluster, storedReason));
     }
 }

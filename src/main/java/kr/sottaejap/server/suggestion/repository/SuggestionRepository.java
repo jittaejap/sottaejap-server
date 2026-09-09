@@ -32,6 +32,16 @@ public interface SuggestionRepository extends JpaRepository<Suggestion, Long> {
     /** 재계산 동기화 — 이번 대상 묶음들의 기존 제안을 한 번에 읽는다 (E-81). */
     List<Suggestion> findAllByBehaviorIdIn(Collection<Long> behaviorIds);
 
+    /** ACTION_PLAN 이유 채우기 — 방금 회고한 리프 묶음의 열린 제안. 부분 유일 인덱스라 있어야 한 건이다. */
+    @Query("""
+            select s from Suggestion s
+            where s.behaviorId = :behaviorId
+              and s.status = kr.sottaejap.server.common.enums.SuggestionStatus.PROPOSED
+              and s.behaviorId in (select c.id from BehaviorCluster c where c.userId = :userId)
+            """)
+    Optional<Suggestion> findProposedByUserIdAndBehaviorId(@Param("userId") long userId,
+                                                           @Param("behaviorId") long behaviorId);
+
     /** `GET /goals`의 `adoptedSaving` 합산 (E-83). */
     List<Suggestion> findAllByGoalIdInAndStatus(Collection<Long> goalIds, SuggestionStatus status);
 }

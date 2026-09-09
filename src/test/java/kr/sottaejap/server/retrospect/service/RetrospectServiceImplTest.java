@@ -16,6 +16,7 @@ import kr.sottaejap.server.retrospect.dto.RetrospectSaveResponse;
 import kr.sottaejap.server.retrospect.repository.BehaviorClusterRepository;
 import kr.sottaejap.server.retrospect.repository.RetrospectRepository;
 import kr.sottaejap.server.rules.cluster.ClusterEvaluation;
+import kr.sottaejap.server.suggestion.service.SuggestionReasonService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
@@ -39,7 +40,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-/** 저장 오케스트레이션 — 쓰기(커밋) → 명명 → 리프 재조회 순서와 후보 limit 기본값. */
+/** 저장 오케스트레이션 — 쓰기(커밋) → 명명 → 제안 이유 → 리프 재조회 순서와 후보 limit 기본값. */
 @ExtendWith(MockitoExtension.class)
 class RetrospectServiceImplTest {
 
@@ -47,6 +48,8 @@ class RetrospectServiceImplTest {
     private RetrospectWriter retrospectWriter;
     @Mock
     private ClusterNamingService clusterNamingService;
+    @Mock
+    private SuggestionReasonService suggestionReasonService;
     @Mock
     private CandidateService candidateService;
     @Mock
@@ -60,7 +63,7 @@ class RetrospectServiceImplTest {
     private RetrospectServiceImpl service;
 
     @Test
-    void 저장은_쓰기_명명_재조회_순서로_돌고_리프_묶음을_응답한다() {
+    void 저장은_쓰기_명명_이유_재조회_순서로_돌고_리프_묶음을_응답한다() {
         RetrospectSaveRequest request = new RetrospectSaveRequest(1043L, Satisfaction.LOW, "충동", "혼자", false, null);
         when(retrospectWriter.write(1L, request)).thenReturn(12L);
         BehaviorCluster leaf = BehaviorCluster.create(1L, "배달|NIGHT|충동|혼자");
@@ -73,9 +76,12 @@ class RetrospectServiceImplTest {
 
         RetrospectSaveResponse response = service.save(1L, request);
 
-        InOrder order = inOrder(retrospectWriter, clusterNamingService, behaviorClusterRepository);
+        InOrder order =
+                inOrder(retrospectWriter, clusterNamingService, suggestionReasonService, behaviorClusterRepository);
         order.verify(retrospectWriter).write(1L, request);
+        // 이름이 먼저다 — 이유 문장이 묶음 이름을 부른다.
         order.verify(clusterNamingService).nameUnnamed(1L, 12L);
+        order.verify(suggestionReasonService).explainProposed(1L, 12L);
         order.verify(behaviorClusterRepository).findById(12L);
         assertEquals(12L, response.behaviorId());
         assertEquals("심야 배달", response.behaviorName());
@@ -84,7 +90,7 @@ class RetrospectServiceImplTest {
     }
 
     @Test
-    void 쓰기가_실패하면_명명을_부르지_않는다() {
+    void 쓰기가_실패하면_명명도_이유도_부르지_않는다() {
         RetrospectSaveRequest request = new RetrospectSaveRequest(1043L, Satisfaction.LOW, null, null, null, null);
         when(retrospectWriter.write(1L, request)).thenThrow(new BusinessException(CommonErrorCode.DUPLICATE_RETROSPECT));
 
@@ -92,6 +98,7 @@ class RetrospectServiceImplTest {
 
         assertEquals(CommonErrorCode.DUPLICATE_RETROSPECT, exception.getErrorCode());
         verify(clusterNamingService, never()).nameUnnamed(anyLong(), anyLong());
+        verifyNoInteractions(suggestionReasonService);
     }
 
     @Test
