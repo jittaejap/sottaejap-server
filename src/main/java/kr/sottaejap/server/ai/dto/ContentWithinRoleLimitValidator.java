@@ -11,7 +11,9 @@ public class ContentWithinRoleLimitValidator implements ConstraintValidator<Cont
         if (message == null || message.content() == null) {
             return true;
         }
-        int length = message.content().length();
+        // 코드 포인트로 센다 — String.length()는 UTF-16 단위라 이모지가 2로 세어, ai가 규격(코드 포인트 2,000)을 지켜도
+        // 서버가 400을 낸다. ClusterNameTemplate.truncate(12자 · 이슈 #20)와 같은 셈법이다.
+        int length = message.content().codePointCount(0, message.content().length());
         if (ChatMessage.USER.equals(message.role())) {
             return length <= ChatMessage.MAX_USER_CONTENT_LENGTH;
         }

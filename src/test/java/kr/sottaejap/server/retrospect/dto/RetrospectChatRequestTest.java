@@ -67,6 +67,16 @@ class RetrospectChatRequestTest {
         assertThat(VALIDATOR.validate(request(List.of(new ChatMessage("user", "   "))))).isNotEmpty();
     }
 
+    /** 길이는 코드 포인트다 (E-110 · 05 §3 · ClusterNameTemplate 선례) — 이모지는 UTF-16으로 2지만 1자로 센다. */
+    @Test
+    void countsContentInCodePoints() {
+        List<ChatMessage> recent = List.of(
+                new ChatMessage("user", "👍".repeat(ChatMessage.MAX_USER_CONTENT_LENGTH)),
+                new ChatMessage("assistant", "👍".repeat(ChatMessage.MAX_ASSISTANT_CONTENT_LENGTH)));
+
+        assertThat(VALIDATOR.validate(request(recent))).isEmpty();
+    }
+
     @Test
     void rejectsUserContentOverTheLimit() {
         List<ChatMessage> recent = List.of(
