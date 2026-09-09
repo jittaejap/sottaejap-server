@@ -14,8 +14,11 @@ public final class HighlightTemplate {
 
     static final String NO_ADJUST = "이번 달은 바꿔보고 싶은 소비가 눈에 띄지 않았어요.";
     static final String NO_RETROSPECT = "아직 돌아본 소비가 없어요. 몇 건만 회고하면 나만의 특징이 보이기 시작해요.";
-    /** E-89 잠정 문구 — 문구 담당이 확정하면 이 상수만 바꾼다. */
-    static final String NO_MONTH_ACTIVITY = "이번 달에 돌아본 소비가 아직 없어요. 이번 달 거래를 몇 건 회고하면 특징이 보이기 시작해요.";
+    /**
+     * E-89 확정 문구 (01 v2.30). "이번 달에 돌아본"은 회고 시점인지 소비 시점인지 두 갈래로 읽혀 — 이 경로의
+     * 사용자는 회고를 이번 달에 했다 — "이번 달 거래 중"으로 소비 시점에 붙였다.
+     */
+    static final String NO_MONTH_ACTIVITY = "이번 달 거래 중 돌아본 것이 아직 없어요. 이번 달 거래를 몇 건 회고하면 특징이 보이기 시작해요.";
 
     private HighlightTemplate() {
     }
