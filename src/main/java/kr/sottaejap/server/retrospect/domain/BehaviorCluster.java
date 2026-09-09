@@ -15,6 +15,7 @@ import kr.sottaejap.server.rules.cluster.ClusterEvaluation;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -23,9 +24,14 @@ import org.hibernate.type.SqlTypes;
  *
  * <p>displayName만 AI가 짓는다 (⑤ · E-64). 한 번 정하면 재계산하지 않는다.
  * PENDING이면 quadrant·verdict가 null이어야 한다 — DB CHECK `ck_behavior_clusters_pending`이 강제한다 (E-11).
+ *
+ * <p><b>바뀐 컬럼만 쓴다 ({@code @DynamicUpdate} · E-100).</b> 재계산의 {@link #apply} · {@link #markEmpty}는 지표만,
+ * 명명({@link #rename})은 {@code displayName}만 쓴다. 명명 쪽은 다시 읽어 이름만 바꾸지만 반대 방향은 그럴 수 없다 —
+ * 재계산이 읽은 뒤 명명이 커밋되면 전체 행 UPDATE가 {@code display_name = NULL}을 같이 실어 AI가 지은 이름이 지워진다.
  */
 @Entity
 @Table(name = "behavior_clusters")
+@DynamicUpdate
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class BehaviorCluster {
