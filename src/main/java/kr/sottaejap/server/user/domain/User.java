@@ -70,6 +70,11 @@ public class User {
         return user;
     }
 
+    /** 온보딩 4단계 완료 (FR-09-02 · E-45). 한 번 켜면 끄는 경로를 두지 않는다 — 다시 부르면 그대로 true다. */
+    public void completeOnboarding() {
+        this.onboardingCompleted = true;
+    }
+
     /** 회고 저장 시 규칙 엔진이 낸 사용자 전체 평균으로 갱신한다 (E-61). */
     public void updateAvgSatisfaction(Double avgSatisfaction) {
         this.avgSatisfaction = avgSatisfaction;
