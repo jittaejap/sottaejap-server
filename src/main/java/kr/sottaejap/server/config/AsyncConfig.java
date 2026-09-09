@@ -1,5 +1,6 @@
 package kr.sottaejap.server.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,10 +17,14 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * <p>기본 executor를 쓰지 않고 전용 빈을 둔다 — 이 작업이 느려도 다른 비동기 작업이 밀리지 않게 하고,
  * 큐 길이를 여기 한곳에서 본다.
  *
- * <p>ponytail: 인스턴스가 하나이고 데모 규모라는 전제다 (07 §1). 큐가 차면
- * {@code ThreadPoolTaskExecutor} 기본 정책대로 호출 스레드에서 돌지 않고 거절되며, 그때는 이유가 비어
- * 화면이 템플릿으로 뜬다 — 회고 저장 자체는 이미 커밋돼 있어 영향이 없다. 처리량이 문제가 되면 여기 값을 올린다.
+ * <p><b>{@code Executor} 빈을 두면 Boot의 {@code applicationTaskExecutor} 자동 구성이 물러난다</b>
+ * ({@code spring.task.execution.mode=auto} 기본). 지금은 쓰는 곳이 없다 — {@code @Async}는 제안 이유 한
+ * 곳뿐이고 {@code @Scheduled}는 별도 {@code taskScheduler}를 쓴다. 나중에 qualifier 없는 {@code @Async}나
+ * MVC 비동기 응답을 붙이면 {@code SimpleAsyncTaskExecutor}로 떨어지므로 그때 이 자리를 본다 (PR #46 리뷰 2).
+ *
+ * <p>ponytail: 인스턴스가 하나이고 데모 규모라는 전제다 (07 §1). 처리량이 문제가 되면 여기 값을 올린다.
  */
+@Slf4j
 @Configuration
 @EnableAsync
 public class AsyncConfig {
@@ -31,6 +36,13 @@ public class AsyncConfig {
                 .maxPoolSize(4)
                 .queueCapacity(50)
                 .threadNamePrefix("suggestion-reason-")
+                // 큐가 찼거나 종료 중이면 버린다. 기본 정책(AbortPolicy)은 TaskRejectedException을 호출
+                // 스레드로 올리는데, @Async 프록시가 submit하는 자리가 곧 RetrospectServiceImpl.save라
+                // 회고가 커밋되고 이름까지 지은 뒤에 POST /retrospects가 500으로 끝난다 (PR #46 리뷰 1).
+                // 이유가 비면 화면이 템플릿으로 채우므로(E-38) 버리는 편이 맞다. 추적하려고 로그는 남긴다.
+                .customizers(executor -> executor.setRejectedExecutionHandler((task, pool) ->
+                        log.warn("제안 이유 작업을 버렸습니다. 큐가 찼거나 종료 중입니다. queue={} shutdown={}",
+                                pool.getQueue().size(), pool.isShutdown())))
                 .build();
     }
 }
