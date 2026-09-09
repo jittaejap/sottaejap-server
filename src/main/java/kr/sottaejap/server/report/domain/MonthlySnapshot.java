@@ -57,10 +57,6 @@ public class MonthlySnapshot {
     @Column(name = "saved_amount")
     private Integer savedAmount;
 
-    public YearMonth yearMonth() {
-        return YearMonth.parse(yearMonth);
-    }
-
     /** DB 컬럼 형식 `YYYY-MM`. 조회 조건을 만들 때도 이것을 쓴다. */
     public static String text(YearMonth yearMonth) {
         return yearMonth.toString();
