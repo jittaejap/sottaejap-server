@@ -89,7 +89,8 @@ public class HighlightServiceImpl implements HighlightService {
                             state(analysisYearMonth, summary)),
                     List.of()));
             String reply = response.reply() == null ? "" : response.reply().strip();
-            // 폴백 · 빈 문장은 집계를 보지 않은 문장이라 캐시하지 않는다 — AI가 돌아오면 다시 부른다 (E-38).
+            // 폴백 · 빈 문장은 집계를 보지 않은 문장이라 캐시하지 않는다 — LLM이 돌아오거나 가드레일을 통과하면
+            // 그때 캐시된다 (E-38 · ai PR #43). 가드레일 폴백은 일시 장애가 아니라 반복될 수 있다 — 이슈 #49.
             if (reply.isBlank() || response.isFallback()) {
                 return HighlightTemplate.highlightFor(summary);
             }
