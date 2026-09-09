@@ -12,6 +12,7 @@ import kr.sottaejap.server.common.enums.SuggestionStatus;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.OffsetDateTime;
 
@@ -23,9 +24,14 @@ import java.time.OffsetDateTime;
  *
  * <p>채택하면 그 시점의 {@code avgAmount}로 {@code expectedSaving}이 굳는다. 이후 재계산이 평균 단가를
  * 바꿔도 채택한 금액은 건드리지 않는다 — 사용자가 보고 고른 숫자가 나중에 달라지면 안 된다.
+ *
+ * <p><b>바뀐 컬럼만 쓴다 ({@code @DynamicUpdate} · E-100).</b> 재계산의 {@link #refresh}는 수치 두 컬럼만, 사용자의
+ * {@link #adopt}는 {@code status} · {@code goalId}를 쓴다. 전체 행을 쓰면 재계산이 읽은 뒤 커밋된 채택을 {@code refresh}가
+ * 옛 {@code PROPOSED} · {@code goalId = null}로 되써서 사용자의 채택이 조용히 풀린다.
  */
 @Entity
 @Table(name = "suggestions")
+@DynamicUpdate
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Suggestion {

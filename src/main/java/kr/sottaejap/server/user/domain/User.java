@@ -12,12 +12,19 @@ import kr.sottaejap.server.common.enums.AuthProvider;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
 /**
  * 04 §1 User. 스키마 정본은 db/migration/V1__init.sql이다 (ddl-auto=validate).
+ *
+ * <p><b>바뀐 컬럼만 쓴다 ({@code @DynamicUpdate} · E-100).</b> 서로 다른 요청이 겹치지 않는 컬럼을 쓴다 —
+ * 설정 변경은 {@code monthlyBudget} · {@code outlierThreshold} · {@code retrospectDelayDays}, 재계산은
+ * {@code avgSatisfaction}, 온보딩 완료는 {@code onboardingCompleted}. 전체 행을 쓰면 예산을 바꾸지 않은 설정 변경이
+ * 요청 시작 때 읽은 옛 {@code avgSatisfaction}을 되써서 그 사이 재계산이 낸 값이 사라진다.
  */
 @Entity
 @Table(name = "users")
+@DynamicUpdate
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
