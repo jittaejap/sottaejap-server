@@ -59,7 +59,7 @@ curl -s localhost:8080/internal-test/ai-ping     # AI 서버(:8000)가 떠 있�
 
 Swagger UI는 `http://localhost:8080/swagger-ui.html`입니다.
 
-**기동이 실패할 때 — Flyway 체크섬 불일치** (07 §4 C)
+**기동이 실패할 때 — Flyway 체크섬 불일치** (E-98 · 07 §4 C)
 
 `docker compose ps`에서 `db` · `ai`는 `(healthy)`인데 `server`만 `Exited (1)`이고,
 `docker compose logs server` 첫 화면이 아래와 같은 경우입니다.
