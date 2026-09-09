@@ -2,6 +2,7 @@ package kr.sottaejap.server.retrospect.service;
 
 import kr.sottaejap.server.common.enums.AuthProvider;
 import kr.sottaejap.server.common.enums.EvaluationStatus;
+import kr.sottaejap.server.common.enums.RetrospectSource;
 import kr.sottaejap.server.common.enums.Satisfaction;
 import kr.sottaejap.server.common.enums.Verdict;
 import kr.sottaejap.server.common.exception.BusinessException;
@@ -86,6 +87,18 @@ class RetrospectWriterIntegrationTest {
         assertEquals(-1.0 / 3, userRepository.findById(userId).orElseThrow().getAvgSatisfaction(), 1e-9);
         assertEquals(List.of(leafAfterThird, leafAfterThird, leafAfterThird),
                 List.of(first.getBehaviorId(), second.getBehaviorId(), third.getBehaviorId()));
+    }
+
+    @Test
+    void 공백이_낀_목적으로_저장해도_묶음_키는_정본_표기다() {
+        Transaction transaction = save("2026-08-20T23:10:00+09:00", 12000, "it-space");
+
+        // 클라이언트 화면 문구 그대로 보낸 경우다. 원문이 저장되면 "휴식·취미"와 다른 묶음으로 갈라진다.
+        Long leafId = retrospectWriter.write(userId, new RetrospectSaveRequest(
+                transaction.getId(), Satisfaction.HIGH, "휴식 · 취미", "가족", false, RetrospectSource.ONBOARDING));
+
+        assertEquals("배달|NIGHT|휴식·취미|가족",
+                behaviorClusterRepository.findById(leafId).orElseThrow().getClusterKey());
     }
 
     @Test
