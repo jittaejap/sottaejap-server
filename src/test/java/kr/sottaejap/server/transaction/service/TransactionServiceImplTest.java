@@ -160,6 +160,31 @@ class TransactionServiceImplTest {
         verifyNoInteractions(transactionRepository);
     }
 
+    /**
+     * 컬럼 길이 절단은 코드 포인트 경계다 (이슈 #20 · E-110과 같은 셈법). UTF-16으로 자르면 255자 언저리의
+     * 가맹점명에서 이모지가 반으로 끊겨 짝 없는 반쪽 문자가 저장된다.
+     */
+    @Test
+    void 가맹점명_절단은_코드_포인트_경계라_이모지가_반으로_끊기지_않는다() {
+        String fits = "가".repeat(254) + "\uD83D\uDC4D";           // 코드 포인트 255 · UTF-16 256 — 그대로 들어간다
+        String overflows = "가".repeat(254) + "\uD83D\uDC4D\uD83D\uDC4D"; // 코드 포인트 256 — 255에서 잘린다
+        when(parser.parseCsv(any())).thenReturn(new TransactionFileParser.ParseResult(List.of(
+                new TransactionFileParser.ParsedRow(2, NIGHT_DELIVERY, fits, 12000, "배달"),
+                new TransactionFileParser.ParsedRow(3, MORNING_CAFE, overflows, 4500, "카페")), List.of()));
+        when(transactionRepository.findImportHashesByUserId(USER_ID)).thenReturn(List.of());
+        MockMultipartFile file = new MockMultipartFile("file", "a.csv", "text/csv", "거래일시,가맹점명,금액\n".getBytes());
+
+        transactionService.upload(USER_ID, file);
+
+        ArgumentCaptor<List<Transaction>> saved = ArgumentCaptor.captor();
+        verify(transactionRepository).saveAll(saved.capture());
+        String kept = saved.getValue().get(0).getMerchant();
+        String cut = saved.getValue().get(1).getMerchant();
+        assertEquals(fits, kept);
+        assertEquals(255, cut.codePointCount(0, cut.length()));
+        assertTrue(cut.endsWith("\uD83D\uDC4D"), "반쪽 서러게이트가 아니라 온전한 이모지로 끝나야 한다");
+    }
+
     @Test
     void findForAi는_같은_질의를_회고_조건_없이_쓴다() {
         when(transactionRepository.search(eq(USER_ID), any(), any(), any(), any(), any()))

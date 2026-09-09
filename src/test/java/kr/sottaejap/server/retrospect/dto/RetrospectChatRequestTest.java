@@ -93,6 +93,23 @@ class RetrospectChatRequestTest {
         assertThat(VALIDATOR.validate(request(recent))).isNotEmpty();
     }
 
+    /** 이번 발화 상한은 #24 · #28과 같은 500자다 (E-112). 경계값과 INTRO 생략은 통과한다. */
+    @Test
+    void acceptsMessageAtTheLimitAndWhenOmitted() {
+        assertThat(VALIDATOR.validate(requestWithMessage("가".repeat(RetrospectChatRequest.MAX_MESSAGE_LENGTH)))).isEmpty();
+        assertThat(VALIDATOR.validate(requestWithMessage(null))).isEmpty();
+    }
+
+    @Test
+    void rejectsMessageOverTheLimit() {
+        assertThat(VALIDATOR.validate(requestWithMessage("가".repeat(RetrospectChatRequest.MAX_MESSAGE_LENGTH + 1))))
+                .isNotEmpty();
+    }
+
+    private static RetrospectChatRequest requestWithMessage(String message) {
+        return new RetrospectChatRequest(1043L, message, null, null, null);
+    }
+
     private static RetrospectChatRequest request(List<ChatMessage> recentMessages) {
         return new RetrospectChatRequest(1043L, "어제 밤 배달", null, null, recentMessages);
     }

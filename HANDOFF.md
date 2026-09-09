@@ -5,7 +5,7 @@
 걸리는지**를 안다. 규칙 본문은 반복하지 않는다 — [AGENTS.md](./AGENTS.md) · [CONTRIBUTING.md](./CONTRIBUTING.md) ·
 [README.md](./README.md) · `sottaejap-docs/AGENTS.md`가 정본이고 여기에는 **그 문서에 없는 실전 지식**만 적는다.
 
-기준 시각: 2026-09-09 17:55 KST. 상태 표는 그 순간의 스냅샷이다 — **최신은 항상 06 액션시트와 GitHub**다.
+기준 시각: 2026-09-09 19:30 KST(이슈 정돈 반영). 상태 표는 그 순간의 스냅샷이다 — **최신은 항상 06 액션시트와 GitHub**다.
 
 ## 1. 읽는 순서
 
@@ -18,14 +18,14 @@
 
 | 항목 | 값 |
 | --- | --- |
-| `main` | `a8ca135` — PR #59(#56 `recentMessages` 규격 밖 → 400) 병합. CI · Deploy success |
+| `main` | `bf5efd8` — PR #62(#61 `recentMessages` 항목 상한 role별 · E-110) 병합. CI · Deploy success |
 | 배포 | `main` 병합 → CI 통과 → `deploy.yml`이 EC2로 자동 배포. **EC2는 프리티어**(README 배포 문단) |
 | 테스트 | 전체 빌드 540건대, DB 통합 포함. CI는 `RUN_DB_INTEGRATION_TESTS=true`로 돈다 |
-| 열린 PR | **#62**(#61 `recentMessages` role별 상한, CI pass) · **#63**(#58 XLSX 스트리밍 카운트 + 힙 320m, CI pass) — 둘 다 리뷰 대기 |
-| 열린 이슈 | #49 · #57 · #58(→ PR #63) · #60 · #61(→ PR #62) · #64(이 문서) |
-| docs | 01 v2.33 · 05 v2.34 · 06 v2.47. 06이 정본 진행표다 |
+| 열린 PR | **#63**(#58 XLSX 스트리밍 카운트 + 힙 명시) · **#68**(#67 잔손질 3건 · 575건 · 건너뜀 0) — 둘 다 리뷰 대기 |
+| 열린 이슈 | **#58**(→ PR #63) · **#67**(리뷰 후속 잔손질 3건 묶음) 둘뿐이다. 9/9 저녁에 정돈했다 — #60 · #66 · #57을 #67로 통합하고, #49는 닫아 06 R33으로만 추적한다(06 v2.52) |
+| docs | 01 v2.35 · 05 v2.36 · 06 v2.52. 06이 정본 진행표다 |
 
-오늘(9/9) 병합된 것: #42(#36) · #44(#20) · #45(#19) · #46(#43) · #48(#47) · #53(#51) · #54(#52) · #55(#50) · #59(#56).
+오늘(9/9) 병합된 것: #42(#36) · #44(#20) · #45(#19) · #46(#43) · #48(#47) · #53(#51) · #54(#52) · #55(#50) · #59(#56) · #65(#64) · #62(#61).
 전부 06에 병합 해시 · Deploy 결과까지 적혀 있다.
 
 ## 3. 남은 작업과 다음 한 걸음
@@ -34,17 +34,16 @@
 
 | 이슈 | 다음 한 걸음 | 크기 |
 | --- | --- | --- |
-| **#57** `PendingSummary` javadoc | `rules/aggregate/PendingSummary.java` 주석 한 단락 — "`ANALYSIS_NARRATE`의 `state`에는 싣지 않는다(E-75). 내부 AI Tool 응답(`InternalAnalysisResponse`)에는 싣는다(ai #50)". 코드 변경 없음, PR 하나 | 10분 |
-| **#60** `/retrospects/chat` `message` 상한 없음 | `RetrospectChatRequest.message`에 `@Size(max = 500)` — `POST /chat/finance` · `/chat/analysis`와 같은 값. **05 §2 #11에 먼저 한 줄**(1~500자), 01 E-번호 채번, 검증 테스트 1건. PR #62와 같은 파일을 건드릴 수 있으니 #62 병합 뒤에 | 30분 |
-| **PR #62 · #63 리뷰** | 작성자가 같은 사람이라 리뷰는 통합 담당(고현석) 또는 이어받는 사람이 한다. 리뷰 방식은 §4-7 | — |
+| **#67** 리뷰 후속 잔손질 3건 (구 #60 · #66 · #57) — **PR #68 리뷰 대기** | 브랜치 하나 · PR 하나로 셋을 끝냈다. ① `RetrospectChatRequest.message`에 `@Size(max = 500)` — **05 §2 #11에 먼저 한 줄**(1~500자) · 01 E-번호 채번 · 검증 테스트. ② `TransactionServiceImpl.truncate`(`:177`)를 `codePointCount` · `offsetByCodePoints`로 — `ClusterNameTemplate.truncate`(#20 · E-110)와 같은 셈법, 공통 헬퍼 추출은 하지 않는다. ③ `rules/aggregate/PendingSummary.java` javadoc 한 단락 — "`ANALYSIS_NARRATE`의 `state`에는 싣지 않는다(E-75). 내부 AI Tool 응답(`InternalAnalysisResponse`)에는 싣는다(ai #50)". 파일 셋이 서로 달라 충돌하지 않는다 | 1시간 |
+| **PR #63 · #68 리뷰** | 작성자가 같은 사람이라 리뷰는 통합 담당(고현석) 또는 이어받는 사람이 한다. 리뷰 방식은 §4-7 | — |
 
 ### 3-2. 입력이 있어야 시작되는 것
 
 | 항목 | 막힌 곳 | 입력이 오면 |
 | --- | --- | --- |
 | **R29** 카테고리 매핑 (P0 · FR-02-03) | **3사 원본 카테고리 값 목록이 어디에도 없다.** server · docs에 CSV 표본 0건 | 04 §4 "내부 통합 카테고리(초안)" 10종에 대응표 초안을 04에 먼저 올리고 확인 → `TransactionServiceImpl.category()` 변환 + **V10 백필 마이그레이션 1회**(`category` ← `source_category` 매핑) + **전체 묶음 재계산 1회**(E-58 — `clusterKey`의 카테고리 · 시간대 자리가 같이 움직인다) + 05 §2 `category`를 enum으로 되돌림(05 v2.21 취소). 06 R29 · 04 v2.15 |
-| **#49 / R33** highlight 캐시와 가드레일 폴백 | 리허설에서 `fallback: true` 비율 | A(폴백도 캐시) / B(원인 필드 계약 변경, 05 먼저) / C(그대로) 중 하나를 01에 E-번호로. 이슈 본문에 셋의 장단이 있다 |
-| **#58** 운영 힙 | PR #63이 올라와 있다(스트리밍 카운트 + `-Xmx320m`) | 리뷰 · 병합. 프리티어 1GB에서 db · ai · server 셋이 같이 뜨는 것을 EC2 `docker stats`로 한 번 본다 |
+| **R33** highlight 캐시와 가드레일 폴백 (구 #49 — 닫았다) | 리허설에서 `fallback: true` 비율 | A(폴백도 캐시) / B(원인 필드 계약 변경, 05 먼저) / C(그대로) 중 하나를 01에 E-번호로. 셋의 장단은 **06 R33 행**에 그대로 있다 — 이슈는 코드로 밟을 다음 걸음이 없어 닫았고 R33으로만 추적한다(06 v2.52). 코드가 필요해지면 그때 새 이슈 |
+| **#58** 운영 힙 | PR #63이 올라와 있다(스트리밍 카운트 + 힙 · 컨테이너 상한 명시) | 리뷰 · 병합. 프리티어 1GB에서 db · ai · server 셋이 같이 뜨는 것을 EC2 `docker stats`로 한 번 본다 |
 
 ### 3-3. EC2 리허설에서 볼 것 (사람 접근 필요)
 
@@ -52,7 +51,7 @@
 
 - 회고 저장 직후 `GET /suggestions`의 `reason`이 템플릿 → 다음 조회에서 AI 문장으로 바뀌는가 (`@Async` 배선, 06 v2.36 메모 — 단위 테스트 밖).
 - `GET /analysis` 두 번째 진입이 `ANALYSIS_NARRATE`를 다시 부르지 않는가 (E-102 캐시, `OPENAI_API_KEY` 있어야 체감).
-- `fallback: true` 비율 — #49 입력.
+- `fallback: true` 비율 — 06 R33 입력(구 #49).
 - 20,001행 CSV → 400 `TOO_MANY_ROWS` · 3MB xlsx → 400(OOM이면 500, #58).
 - `POST /chat/analysis` 왕복(1.0~1.5초, 06 v2.46) · `recentMessages`에 `role: system` → 400.
 
@@ -145,7 +144,7 @@ HTTP 본문까지 보려면 README "시작하기"의 `docker compose up -d --bui
 | E | 한 줄 |
 | --- | --- |
 | E-100 | `Goal` · `User` · `Suggestion` · `BehaviorCluster`는 `@DynamicUpdate` — 전체 행 쓰기가 실적 배분을 덮었다(#36) |
-| E-102 | `GET /analysis` highlight를 사용자별 한 칸 캐시, 키는 집계 그 자체. `fallback: true`는 캐시하지 않는다 → 가드레일 폴백이 매번 왕복(#49) |
+| E-102 | `GET /analysis` highlight를 사용자별 한 칸 캐시, 키는 집계 그 자체. `fallback: true`는 캐시하지 않는다 → 가드레일 폴백이 매번 왕복(06 R33) |
 | E-103 | 제안 `reason`을 AI 문장으로, 응답 경로 밖(`@Async`). 롤업된 리프는 상위 묶음 id로 찾는다(#43) |
 | E-105 | 업로드 행수 상한 20,000 → 400 `TOO_MANY_ROWS`. client 타임아웃 분리 대신 server 한 곳(#52) |
 | E-106 | FR-02-05 가맹점명 정규화 본선 제외 — `merchantNormalized`를 읽는 코드가 없다 |
