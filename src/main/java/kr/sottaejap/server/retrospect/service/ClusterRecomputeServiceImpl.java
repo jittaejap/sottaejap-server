@@ -34,6 +34,9 @@ import java.util.Map;
  * 사용자 전체 묶음 재계산 (E-61). 회고를 하나 저장할 때마다 사용자 평균이 바뀌고 상위 묶음은 자식의 합집합이라
  * 부분 재계산이 더 어렵다 — 그래서 매번 전부 다시 계산한다.
  *
+ * <p>회고가 0건인 사용자에게는 아무것도 하지 않는다 (E-96). 회고 수가 단조 증가하므로(지우는 경로가 없다)
+ * "회고 0건"은 곧 "묶음 0건"이고, 지울 기존 묶음도 있을 수 없다 — 회고 삭제 API가 생기면 이 가드를 다시 본다.
+ *
  * <p>저장 순서가 계약이다. {@code ClusterEngine}이 상위 묶음을 먼저 주므로 그 순서대로 저장해 id를 얻고,
  * 리프는 그 id를 {@code parentId}로 받는다 (E-59). 이번 결과에 없는 기존 묶음은 지우지 않고 값만 비운다
  * ({@link BehaviorCluster#markEmpty}) — {@code transactions.behavior_id}와 제안이 그 행을 참조할 수 있고,
@@ -64,6 +67,13 @@ public class ClusterRecomputeServiceImpl implements ClusterRecomputeService {
         List<RetrospectedTransaction> transactions = retrospectRepository.findAllWithTransactionByUserId(userId).stream()
                 .map(ClusterRecomputeServiceImpl::toRuleInput)
                 .toList();
+        // 회고가 없으면 낼 묶음도 지울 묶음도 없다 (E-96). 그대로 진행하면 회고를 한 번도 하지 않은 사용자의
+        // avgSatisfaction에 0을 쓴다. 경로가 둘이다 — 온보딩 3단계(업로드)와 POST /onboarding/complete다.
+        // 뒤쪽은 회고 0건으로도 온다("나중에 회고하기" · 후보 없을 때의 "홈으로 가기") — "온보딩은 표본 회고
+        // 뒤라 회고가 있다"는 근거로 이 가드를 지우지 않는다.
+        if (transactions.isEmpty()) {
+            return List.of();
+        }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND));
 

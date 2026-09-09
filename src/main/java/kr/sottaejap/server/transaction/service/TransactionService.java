@@ -10,6 +10,11 @@ import java.util.List;
 
 public interface TransactionService {
 
+    /**
+     * CSV · XLSX를 파싱해 저장한다. <b>묶음 재계산은 여기서 하지 않는다</b> — 업로드를 커밋한 뒤 도는 것이
+     * 계약이고 그 배치 자리는 {@link TransactionUploadFacade}다 (E-95). 여기에 재계산을 주입하면 순환
+     * 참조로 기동이 죽는다.
+     */
     TransactionUploadResponse upload(long userId, MultipartFile file);
 
     /** AI `SpringClient.get_transactions`가 쓰는 조회 (05 §3). */
