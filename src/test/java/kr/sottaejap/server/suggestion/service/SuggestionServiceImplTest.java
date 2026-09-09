@@ -1,5 +1,6 @@
 package kr.sottaejap.server.suggestion.service;
 
+import kr.sottaejap.server.analysis.service.ClusterSnapshotMapper;
 import kr.sottaejap.server.common.enums.EvaluationStatus;
 import kr.sottaejap.server.common.enums.Quadrant;
 import kr.sottaejap.server.common.enums.SuggestionStatus;
@@ -105,6 +106,31 @@ class SuggestionServiceImplTest {
         assertEquals("심야 배달", view.behaviorName());
         assertTrue(view.reason().contains("심야 배달"), view.reason());
         assertTrue(view.reason().contains("96,000"), view.reason());
+    }
+
+    @Test
+    void 화면_목록은_AI가_쓴_이유를_보여준다() {
+        Suggestion explained = suggestion(1L, 1L);
+        explained.explain("심야 배달을 두 번만 줄여도 24,000원이 남아요.");
+        givenSuggestions(List.of(explained));
+        givenClusters(cluster(1L, Quadrant.MINOR, "심야 배달"));
+
+        assertEquals("심야 배달을 두 번만 줄여도 24,000원이 남아요.",
+                service.list(USER_ID, null).suggestions().getFirst().reason());
+    }
+
+    @Test
+    void 내부_AI_목록은_AI가_쓴_이유를_돌려주지_않는다() {
+        // AI가 이 reason을 프롬프트에 넣으므로, 자기가 쓴 문장을 주면 자기 출력을 근거로 삼는다 (E-75).
+        Suggestion explained = suggestion(1L, 1L);
+        explained.explain("심야 배달을 두 번만 줄여도 24,000원이 남아요.");
+        givenSuggestions(List.of(explained));
+        givenClusters(cluster(1L, Quadrant.MINOR, "심야 배달"));
+
+        String reason = service.internalList(USER_ID).suggestions().getFirst().reason();
+
+        assertEquals(SuggestionReasonTemplate.reasonFor("심야 배달", ClusterSnapshotMapper.toSnapshot(
+                cluster(1L, Quadrant.MINOR, "심야 배달"))), reason);
     }
 
     @Test

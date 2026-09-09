@@ -53,6 +53,13 @@ public class Suggestion {
     @Column(name = "goal_id")
     private Long goalId;
 
+    /**
+     * AI가 쓴 이유 문장 (ACTION_PLAN · 05 §3). null이면 화면이 {@code SuggestionReasonTemplate}으로 채운다 (E-38).
+     * 내부 AI 응답에는 싣지 않는다 — AI가 자기 출력을 근거로 삼는다 (E-75).
+     */
+    @Column(columnDefinition = "text")
+    private String reason;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private SuggestionStatus status;
@@ -75,7 +82,27 @@ public class Suggestion {
      * 인덱스 때문이다 — Hibernate가 INSERT를 DELETE보다 먼저 내보내 충돌한다.
      */
     public void refresh(int txCount, int expectedSaving) {
-        this.adjustCount = txCount;
+        applyNumbers(txCount, expectedSaving);
+    }
+
+    /** AI가 쓴 이유 문장을 채운다 (ACTION_PLAN). 빈 문장은 템플릿이 낫다 — 호출자가 거른다. */
+    public void explain(String reason) {
+        this.reason = reason;
+    }
+
+    /**
+     * 횟수와 절감액을 바꾸면서, <b>값이 실제로 달라졌으면</b> 이유 문장을 버린다. AI 문장은 이 두 숫자를
+     * 인용하므로 값이 바뀌면 틀린 말이 된다 — 채택으로 사용자가 횟수를 고쳤을 때도 같다.
+     *
+     * <p>값이 같아도 무조건 비우면 안 된다. 동기화는 값이 그대로여도 매번 {@link #refresh}를 부르므로,
+     * 모든 재계산이 문장을 지워 버린다.
+     */
+    private void applyNumbers(int adjustCount, int expectedSaving) {
+        if (!Integer.valueOf(adjustCount).equals(this.adjustCount)
+                || !Integer.valueOf(expectedSaving).equals(this.expectedSaving)) {
+            this.reason = null;
+        }
+        this.adjustCount = adjustCount;
         this.expectedSaving = expectedSaving;
     }
 
@@ -87,8 +114,7 @@ public class Suggestion {
      * {@code PUT /users/me/settings}가 쓰는 "null은 그대로 두기"와 같은 규칙이다.
      */
     public void adopt(int adjustCount, int expectedSaving, Long goalId) {
-        this.adjustCount = adjustCount;
-        this.expectedSaving = expectedSaving;
+        applyNumbers(adjustCount, expectedSaving);
         if (goalId != null) {
             this.goalId = goalId;
         }

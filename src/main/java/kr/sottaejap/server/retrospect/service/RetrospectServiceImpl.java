@@ -14,6 +14,7 @@ import kr.sottaejap.server.retrospect.dto.RetrospectSaveResponse;
 import kr.sottaejap.server.retrospect.repository.BehaviorClusterRepository;
 import kr.sottaejap.server.retrospect.repository.RetrospectRepository;
 import kr.sottaejap.server.retrospect.repository.RetrospectWithTransaction;
+import kr.sottaejap.server.suggestion.service.SuggestionReasonService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -24,8 +25,9 @@ import java.util.List;
 
 /**
  * /retrospects/* 진입점. {@link #save}는 일부러 @Transactional이 아니다 — 쓰기({@link RetrospectWriter})를
- * 커밋한 뒤 AI 명명({@link ClusterNamingService})을 부르므로 DB 트랜잭션이 AI 타임아웃(15초) 동안 열려 있지 않다 (E-64).
- * 명명은 응답에 실리는 리프에만 AI를 쓰므로 저장 1건의 AI 왕복은 한 번, 최대 15초다.
+ * 커밋한 뒤 AI 명명({@link ClusterNamingService})과 제안 이유({@link SuggestionReasonService})를 부르므로
+ * DB 트랜잭션이 AI 타임아웃(15초) 동안 열려 있지 않다 (E-64).
+ * 둘 다 응답에 실리는 리프에만 AI를 쓰므로 저장 1건의 AI 왕복은 명명 1회 + 이유 1회다.
  */
 @Service
 @RequiredArgsConstructor
@@ -37,6 +39,7 @@ public class RetrospectServiceImpl implements RetrospectService {
 
     private final RetrospectWriter retrospectWriter;
     private final ClusterNamingService clusterNamingService;
+    private final SuggestionReasonService suggestionReasonService;
     private final CandidateService candidateService;
     private final RetrospectChatSupport chatSupport;
     private final BehaviorClusterRepository behaviorClusterRepository;
@@ -46,6 +49,8 @@ public class RetrospectServiceImpl implements RetrospectService {
     public RetrospectSaveResponse save(long userId, RetrospectSaveRequest request) {
         Long leafId = retrospectWriter.write(userId, request);
         clusterNamingService.nameUnnamed(userId, leafId);
+        // 이름을 지은 뒤에 부른다 — 이유 문장이 묶음 이름을 부르므로, 먼저 부르면 템플릿 이름이 문장에 박힌다.
+        suggestionReasonService.explainProposed(userId, leafId);
         BehaviorCluster leaf = behaviorClusterRepository.findById(leafId)
                 .orElseThrow(() -> new IllegalStateException("재계산 직후 리프 묶음이 없다: " + leafId));
         return RetrospectSaveResponse.from(leaf);
