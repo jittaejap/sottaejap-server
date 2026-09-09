@@ -30,11 +30,21 @@ class RetrospectChatRequestTest {
         assertThat(VALIDATOR.validate(request(null))).isEmpty();
     }
 
+    /** 상한은 role별이다 (E-110) — user 500자 · assistant 2,000자. 경계값은 통과한다. */
     @Test
-    void acceptsRecentMessagesWithUserAndAssistantRoles() {
+    void acceptsRecentMessagesAtEachRoleLimit() {
         List<ChatMessage> recent = List.of(
-                new ChatMessage("assistant", "만족하셨나요?"),
-                new ChatMessage("user", "가".repeat(ChatMessage.MAX_CONTENT_LENGTH)));
+                new ChatMessage("assistant", "가".repeat(ChatMessage.MAX_ASSISTANT_CONTENT_LENGTH)),
+                new ChatMessage("user", "가".repeat(ChatMessage.MAX_USER_CONTENT_LENGTH)));
+
+        assertThat(VALIDATOR.validate(request(recent))).isEmpty();
+    }
+
+    /** assistant 항목은 AI reply를 client가 되돌려 보낸 것 — user 상한(500)에 걸리면 안 된다 (E-110 · #61). */
+    @Test
+    void acceptsAssistantContentOverTheUserLimit() {
+        List<ChatMessage> recent = List.of(
+                new ChatMessage("assistant", "가".repeat(ChatMessage.MAX_USER_CONTENT_LENGTH + 1)));
 
         assertThat(VALIDATOR.validate(request(recent))).isEmpty();
     }
@@ -58,8 +68,17 @@ class RetrospectChatRequestTest {
     }
 
     @Test
-    void rejectsRecentMessageContentOverTheLimit() {
-        List<ChatMessage> recent = List.of(new ChatMessage("user", "가".repeat(ChatMessage.MAX_CONTENT_LENGTH + 1)));
+    void rejectsUserContentOverTheLimit() {
+        List<ChatMessage> recent = List.of(
+                new ChatMessage("user", "가".repeat(ChatMessage.MAX_USER_CONTENT_LENGTH + 1)));
+
+        assertThat(VALIDATOR.validate(request(recent))).isNotEmpty();
+    }
+
+    @Test
+    void rejectsAssistantContentOverTheLimit() {
+        List<ChatMessage> recent = List.of(
+                new ChatMessage("assistant", "가".repeat(ChatMessage.MAX_ASSISTANT_CONTENT_LENGTH + 1)));
 
         assertThat(VALIDATOR.validate(request(recent))).isNotEmpty();
     }
