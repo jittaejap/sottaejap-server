@@ -10,10 +10,10 @@ import kr.sottaejap.server.rules.aggregate.ClusterSnapshot;
  * <p>집계에 있는 수치만 쓴다 (NFR-02). 예산이 없어 좌표를 모르면 <b>부담을 언급하지 않는다</b> —
  * 모르는 것을 "크지 않다"고 말할 수는 없다.
  *
- * <p>묶음 이름 뒤에 조사를 붙이지 않는다 (이슈 #20). 이름은 AI가 짓기 때문에 숫자 · 영문 · 이모지로
- * 끝날 수 있어 종성 판별로도 `은(는)` 폴백이 남는다 — 쉼표로 끊어 문장 구조로 피한다. 이 저장소의 다른
- * 사용자 문구(`NotificationServiceImpl` · `HighlightTemplate`)도 같은 방식이다. 문구는 잠정이다 —
- * 문구 담당이 확정하면 이 세 문자열과 05 §2 표만 바꾼다.
+ * <p><b>이름 뒤에는 받침과 무관한 조사(`의` · `에`)만 쓴다</b> (이슈 #20 · PR #44 리뷰). 이름은 AI가 짓기 때문에
+ * 숫자 · 영문 · 이모지로 끝날 수 있어 종성 판별로도 `은(는)` 폴백이 남는다. `HighlightTemplate`의 `"이번 달 %s에 …"`와
+ * 같은 방식이다. PRIORITY만 "지출"을 주어로 세워 여는데, 그 highlight 문장(카테고리 전체 합계)과 같은 문형으로
+ * 나란히 놓이면 금액을 두 번 쓴 것으로 읽히기 때문이다 — 여기 금액은 ADJUST 묶음 하나의 월 합계다.
  */
 public final class SuggestionReasonTemplate {
 
@@ -22,12 +22,12 @@ public final class SuggestionReasonTemplate {
 
     public static String reasonFor(String behaviorName, ClusterSnapshot cluster) {
         if (cluster.quadrant() == Quadrant.PRIORITY) {
-            return "%s, 이번 달 %,d원으로 부담이 컸고 만족도도 낮았어요. 횟수를 줄여볼까요?"
+            return "%s의 이번 달 지출이 %,d원이에요. 부담이 컸고 만족도도 낮았어요. 횟수를 줄여볼까요?"
                     .formatted(behaviorName, cluster.monthlyTotalAmount());
         }
         if (cluster.quadrant() == Quadrant.MINOR) {
-            return "%s, 부담이 크진 않지만 만족도가 낮았어요. 조금만 줄여볼까요?".formatted(behaviorName);
+            return "부담이 크진 않지만 %s의 만족도가 낮았어요. 조금만 줄여볼까요?".formatted(behaviorName);
         }
-        return "%s, 만족도가 낮았어요. 몇 번만 줄여볼까요?".formatted(behaviorName);
+        return "%s의 만족도가 낮았어요. 몇 번만 줄여볼까요?".formatted(behaviorName);
     }
 }
