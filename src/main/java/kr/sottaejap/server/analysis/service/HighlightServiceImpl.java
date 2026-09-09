@@ -54,8 +54,17 @@ public class HighlightServiceImpl implements HighlightService {
     private final Map<Long, Cached> cache = new ConcurrentHashMap<>();
 
     /**
-     * 캐시 키는 집계 그 자체다. {@link AnalysisSummary} 이하가 전부 record라 {@code equals}가 값 비교이고,
-     * record라 기준월이 {@code null}인 경우(거래가 없는 사용자)도 그냥 같다고 나온다.
+     * 캐시 키는 집계 그 자체다. {@link AnalysisSummary} 이하가 전부 record라 {@code equals}가 값 비교다.
+     *
+     * <p><b>AI가 {@code task_context.state}만 보고 문장을 쓴다는 전제에 기댄다</b> (05 §3). 지금
+     * {@code ANALYSIS_NARRATE}에는 전용 핸들러가 없어 도구 호출 없이 state 한 번으로 생성하고,
+     * {@code recent_messages}도 비워 보내므로 AI 입력은 {@link #state}가 싣는 것이 전부다 — 이 키가 그것을
+     * 빠짐없이 덮는다. <b>ai가 이 작업에 도구(`/internal/ai/users/{id}/analysis`)를 쓰게 되면 그 응답에는 묶음
+     * 단위 {@code points}가 있어 집계가 같아도 문장 재료가 달라진다. 그때 이 키를 다시 봐야 한다.</b>
+     *
+     * <p>기준월이 {@code null}이어도 record라 그냥 같다고 나오지만, 실제로 그 값이 여기까지 오지는 않는다 —
+     * 기준월이 없으면 거래가 0건이고, 그러면 묶음도 없어 {@code AnalysisServiceImpl}의 가드(E-75)가 먼저
+     * 템플릿을 돌려준다. 테스트에서만 밟는 경로다.
      */
     private record Key(YearMonth analysisYearMonth, AnalysisSummary summary) {
     }

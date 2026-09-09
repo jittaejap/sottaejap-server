@@ -198,6 +198,16 @@ class HighlightServiceImplTest {
     }
 
     @Test
+    void 빈_문장도_캐시하지_않는다() {
+        when(aiClient.chat(any())).thenReturn(reply("   "));
+
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+
+        verify(aiClient, times(2)).chat(any());
+    }
+
+    @Test
     void AI가_503이어도_캐시하지_않는다() {
         when(aiClient.chat(any())).thenThrow(new BusinessException(CommonErrorCode.LLM_UNAVAILABLE));
 
