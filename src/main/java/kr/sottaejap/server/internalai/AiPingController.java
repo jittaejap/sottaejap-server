@@ -15,8 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 07 §4 — `curl localhost:8080/internal-test/ai-ping` 이 200을 돌려주면 Spring → AI /chat 왕복이 산다.
- * 개발 확인용이며 운영에서는 리버스 프록시가 /internal 접두사를 열지 않는다.
+ * 07 §4 — `curl -H "X-Internal-Secret: $AI_SHARED_SECRET" localhost:8080/internal-test/ai-ping` 이 200을
+ * 돌려주면 Spring → AI /chat 왕복이 산다. 개발 확인용이고, 헤더가 없으면 InternalSecretFilter가 401로 막는다 (#75).
  */
 @RestController
 @RequiredArgsConstructor
