@@ -12,6 +12,7 @@ description = "소때잡 서버 — 인증 · 저장/조회 API · 파싱 · 규
 val springdocVersion = "3.1.0"
 val jjwtVersion = "0.13.0"
 val poiVersion = "5.5.1"
+val commonsCompressVersion = "1.28.0"
 val webPushVersion = "5.1.1"
 val bouncyCastleVersion = "1.78.1"
 
@@ -40,6 +41,9 @@ dependencies {
 
     // XLSX 업로드 — 05 §2. Boot 미관리
     implementation("org.apache.poi:poi-ooxml:$poiVersion")
+    // POI가 데려오는 것이지만 TransactionFileParser가 zip을 직접 읽는 데 쓴다 — 직접 쓰는 것은 직접 적는다.
+    // 값은 POI 5.5.1이 데려오는 것과 같다. 낮게 적혀도 Gradle이 높은 쪽을 쓰므로 POI를 올리면 따라 올라간다.
+    implementation("org.apache.commons:commons-compress:$commonsCompressVersion")
     // Web Push — Boot 미관리. VAPID JWT 서명과 AES128GCM 본문 암호화 때문에 직접 짜지 않는다.
     // 이 라이브러리에서 쓰는 것은 암호화와 서명뿐이고 전송은 AiClient와 같은 JDK HttpClient로 한다.
     // 그래서 딸려 오는 HTTP 스택 셋(Apache async · AHC/Netty · CLI용 jcommander)은 전부 제외한다.
