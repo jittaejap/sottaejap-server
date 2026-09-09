@@ -59,6 +59,43 @@ curl -s localhost:8080/internal-test/ai-ping     # AI 서버(:8000)가 떠 있�
 
 Swagger UI는 `http://localhost:8080/swagger-ui.html`입니다.
 
+**기동이 실패할 때 — Flyway 체크섬 불일치** (E-98 · 07 §4 C)
+
+`docker compose ps`에서 `db` · `ai`는 `(healthy)`인데 `server`만 `Exited (1)`이고,
+`docker compose logs server` 첫 화면이 아래와 같은 경우입니다.
+
+```text
+Migration checksum mismatch for migration version 8
+-> Applied to database : 928890964
+-> Resolved locally    : -541474916
+```
+
+**`flyway repair`를 먼저 부르지 마십시오.** 그 버전이 만든 테이블의 실제 컬럼을 먼저 봅니다.
+
+```bash
+docker compose exec db psql -U sottaejap -d sottaejap -c "\d financial_chunks"
+```
+
+`src/main/resources/db/migration`의 해당 파일이 적는 컬럼이 출력에 없으면 체크섬만 어긋난 것이 아니라
+**스키마가 다릅니다.** 볼륨이 파일보다 오래된 것입니다 — 리뷰 중 마이그레이션 파일에 컬럼이 추가된
+뒤 squash로 병합되면, 그 전에 만든 로컬 DB가 이 상태가 됩니다. `repair`는 기록된 체크섬을 지금 파일
+값으로 덮어쓸 뿐 빠진 컬럼을 만들지 않으므로, 기동은 지나가고 나중에 그 컬럼을 읽는 코드가 깨집니다.
+
+볼륨을 지우고 다시 띄웁니다. Flyway가 `V1`부터 다시 적용합니다.
+
+```bash
+docker compose down -v            # 이 폴더의 compose 프로젝트 볼륨만 지운다
+docker compose up -d --build
+```
+
+**로컬 개발 DB에서만 씁니다.** EC2에서는 쓰지 않습니다 — 배포 DB는 `deploy/docker-compose.yml`이 쓰고,
+거기서 볼륨을 지우면 실제 사용자 데이터가 사라집니다. 로컬에서 지워지는 것은 `sottaejap_db_data`에 든
+전부이고, 실제로는 로그인으로 생긴 `users` 몇 행이라 다시 로그인하면 그대로 생깁니다. 올려 둔 거래
+CSV가 있으면 다시 올립니다.
+
+`down -v`는 **명령을 실행한 폴더의 compose 프로젝트 볼륨만** 지웁니다. 이 저장소에서 실행하면
+`sottaejap-server_sottaejap_db_data` 하나이고, `sottaejap-demo_db_data`는 사정권 밖입니다.
+
 ## 검사 명령
 
 CI(`.github/workflows/ci.yml`)가 같은 명령을 PostgreSQL 서비스와 함께 돌립니다.
