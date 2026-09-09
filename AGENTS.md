@@ -13,6 +13,7 @@
 | 스택 버전 · 폴더 구조 · 환경 변수 · OS 규칙 | `sottaejap-docs/07_기술스택_레포구성.md`                 |
 | 브랜치 · 커밋 · PR · 검사 명령   | [CONTRIBUTING.md](./CONTRIBUTING.md)             |
 | 설치와 실행 · 패키지 배치 규칙    | [README.md](./README.md)                         |
+| 남은 작업 · 한 건을 끝내는 절차 · 검증 레시피 · docs 갱신 함정 | [HANDOFF.md](./HANDOFF.md) (2026-09-09 인수인계) |
 
 `sottaejap-docs/`는 별도 저장소 [jittaejap/sottaejap-docs](https://github.com/jittaejap/sottaejap-docs)입니다. 이 저장소와 같은 부모 폴더에 clone해 두고 경로는 그 기준으로 읽습니다.
 
