@@ -54,7 +54,8 @@ docker compose up -d db          # pgvector/pgvector:pg18, :5432
 curl -s localhost:8080/actuator/health
 curl -s -X POST localhost:8080/auth/login -H 'Content-Type: application/json' -d '{"provider":"LOCAL"}'
 curl -s localhost:8080/users/me -H "Authorization: Bearer <accessToken>"
-curl -s localhost:8080/internal-test/ai-ping     # AI 서버(:8000)가 떠 있어야 200 — 9/2 성공 기준 (07 §4)
+curl -s -H "X-Internal-Secret: $AI_SHARED_SECRET" localhost:8080/internal-test/ai-ping
+# AI 서버(:8000)가 떠 있어야 200 — 9/2 성공 기준 (07 §4). 헤더가 없으면 401이 정상입니다 (#75).
 ```
 
 Swagger UI는 `http://localhost:8080/swagger-ui.html`입니다.
@@ -299,6 +300,24 @@ CI 통과 → 이미지 빌드 → Docker Hub push → EC2 SSH → compose 전�
 EC2 구성은 `deploy/docker-compose.yml`이 정본입니다. `sottaejap-ai`도 EC2에 있는 이 파일을 읽어 쓰므로,
 **이 저장소가 최소 한 번 먼저 배포돼야** AI 배포가 동작합니다.
 8080·8000은 `127.0.0.1`에만 열려 있고 바깥은 Nginx(`api.clearpng.cloud`)만 통과합니다.
+
+### Nginx에서 `/internal` 접두사 지우기 (선택 · 사람이 EC2에서)
+
+`/internal/ai/**`와 `/internal-test/**`는 `InternalSecretFilter`가 `X-Internal-Secret` 없이는 401로 막습니다 (#75).
+그 위에 접두사 자체를 바깥에서 지우려면 EC2의 Nginx 서버 블록에 아래 한 줄을 넣고 설정을 다시 읽힙니다.
+코드가 막는 것과 별개인 이중 방어이고, `/internal`로 시작하는 경로 전부가 404가 됩니다.
+
+```nginx
+# /etc/nginx/sites-available/api.clearpng.cloud 의 server 블록 안
+location ^~ /internal { return 404; }
+```
+
+```bash
+# EC2에서 — 문법을 먼저 확인하고 다시 읽힌다 (재시작이 아니라 reload라 연결이 끊기지 않는다)
+sudo nginx -t
+sudo nginx -s reload
+curl -i https://api.clearpng.cloud/internal-test/ai-ping   # 404
+```
 
 ### Actions Secrets
 

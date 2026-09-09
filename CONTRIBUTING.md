@@ -108,7 +108,7 @@ DB가 필요한 컨텍스트 테스트는 `RUN_DB_INTEGRATION_TESTS=true`일 때
 - Swagger UI(`/swagger-ui.html`)가 뜨는지
 - 응답 본문과 오류 코드
 - Flyway 적용 결과와 `ddl-auto=validate` 통과
-- AI 연동을 바꿨다면 `/internal-test/ai-ping` 200
+- AI 연동을 바꿨다면 `curl -s -H "X-Internal-Secret: $AI_SHARED_SECRET" localhost:8080/internal-test/ai-ping` 200 (헤더가 없으면 401 · #75)
 
 ## 6. 계약 변경 절차
 

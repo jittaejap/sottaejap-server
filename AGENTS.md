@@ -49,7 +49,9 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 - AI → Spring: `internalai/InternalAiController`의 `/internal/ai/users/{userId}/*` 6종. `X-Internal-Secret`
   헤더를 `InternalSecretFilter`가 검사합니다. **시크릿이 비어 있으면 모든 요청을 거부합니다** — "로컬이니까" 비워 두면
   ai-ping은 되지만 AI의 역호출은 전부 401입니다.
-  개발 확인용 `/internal-test/ai-ping`도 같은 `internalai/` 패키지에 있습니다 — 기계가 부르는 경로는 한 곳에 모읍니다.
+  개발 확인용 `/internal-test/ai-ping`도 같은 `internalai/` 패키지에 있고 **같은 헤더를 요구합니다** — 기계가 부르는 경로는 한 곳에 모읍니다.
+  확인 명령은 `curl -s -H "X-Internal-Secret: $AI_SHARED_SECRET" localhost:8080/internal-test/ai-ping`이고, 헤더가 없으면 401이 정상입니다.
+  운영 프록시가 `/internal` 접두사를 막는다는 전제에 기대던 것을 코드로 옮겼습니다 (#75).
 - `AiClient`는 JDK `HttpClient`를 **HTTP/1.1로 고정**합니다. 기본값(HTTP/2 업그레이드 시도)이면 uvicorn이 본문을 버려
   `/chat`이 422 "Field required: body"를 돌려주고, Spring은 그것을 503 `LLM_UNAVAILABLE`로 보여줍니다. AI 서버가
   멀쩡한데 ai-ping이 503이면 이것부터 의심합니다.
