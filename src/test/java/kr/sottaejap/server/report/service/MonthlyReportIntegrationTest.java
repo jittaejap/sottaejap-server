@@ -98,7 +98,7 @@ class MonthlyReportIntegrationTest {
         save("2026-07-15T12:00:00+09:00", 35_000);
         writeThreeLowRetrospects("2026-08");
         save("2026-08-25T09:00:00+09:00", 4_000);
-        GoalView goal = goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, 0));
+        GoalView goal = goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, null, 0));
         adoptFirstSuggestion(goal);
 
         MonthlyReportResponse first = reportService.monthly(userId, AUGUST);
@@ -136,7 +136,7 @@ class MonthlyReportIntegrationTest {
         // 6월 60,000 · 7월 LOW 회고 3건 36,000 — 7월은 두 달 전이다
         save("2026-06-05T12:00:00+09:00", 60_000);
         writeThreeLowRetrospects("2026-07");
-        GoalView goal = goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, 0));
+        GoalView goal = goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, null, 0));
         adoptFirstSuggestion(goal);
 
         MonthlyReportResponse july = reportService.monthly(userId, JULY);
@@ -193,7 +193,7 @@ class MonthlyReportIntegrationTest {
     @Test
     void 전월_데이터가_없는_달은_감소액_없이_확정되고_배분도_없다() {
         save("2026-07-05T12:00:00+09:00", 25_000);
-        goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, 0));
+        goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, null, 0));
 
         MonthlyReportResponse july = reportService.monthly(userId, JULY);
 

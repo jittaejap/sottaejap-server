@@ -18,6 +18,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -109,16 +110,18 @@ class GoalServiceImplTest {
     }
 
     @Test
-    void 수정은_이름과_목표액을_바꾸고_실적은_생략하면_유지한다() {
+    void 수정은_이름과_목표액을_바꾸고_실적과_예정일은_생략하면_유지한다() {
         Goal goal = goal(3L, 1_000_000, 250_000);
         when(goalRepository.findByIdAndUserIdAndDeletedAtIsNull(3L, USER_ID)).thenReturn(Optional.of(goal));
         when(suggestionRepository.findAllByGoalIdInAndStatus(anyList(), eq(SuggestionStatus.ADOPTED))).thenReturn(List.of());
 
-        service.update(USER_ID, 3L, new GoalRequest("새 이름", 2_000_000, null));
+        service.update(USER_ID, 3L, new GoalRequest("새 이름", 2_000_000, null, null));
 
         assertEquals("새 이름", goal.getName());
         assertEquals(2_000_000, goal.getTargetAmount());
         assertEquals(250_000, goal.getCurrentAmount());
+        // 지금 배포된 마이페이지는 예정일을 보내지 않는다 — 생략을 '지움'으로 읽으면 온보딩의 날짜가 날아간다
+        assertEquals(LocalDate.of(2026, 12, 25), goal.getTargetDate());
     }
 
     @Test
@@ -126,11 +129,11 @@ class GoalServiceImplTest {
         when(goalRepository.findByIdAndUserIdAndDeletedAtIsNull(99L, USER_ID)).thenReturn(Optional.empty());
 
         assertEquals(CommonErrorCode.NOT_FOUND, assertThrows(BusinessException.class,
-                () -> service.update(USER_ID, 99L, new GoalRequest("이름", 1, 0))).getErrorCode());
+                () -> service.update(USER_ID, 99L, new GoalRequest("이름", 1, null, 0))).getErrorCode());
     }
 
     private static Goal goal(long id, int target, int current) {
-        Goal goal = Goal.create(USER_ID, "여행 자금", target, current);
+        Goal goal = Goal.create(USER_ID, "여행 자금", target, LocalDate.of(2026, 12, 25), current);
         ReflectionTestUtils.setField(goal, "id", id);
         return goal;
     }

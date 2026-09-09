@@ -15,6 +15,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDate;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
@@ -42,7 +44,7 @@ class GoalUpdateRaceIntegrationTest {
     void createGoalWithoutProgress() {
         User user = User.social(AuthProvider.KAKAO, "goal-race-" + System.nanoTime(), "통합테스트", null);
         userId = userRepository.save(user).getId();
-        goalId = goalRepository.save(Goal.create(userId, "여행 자금", 1_000_000, 0)).getId();
+        goalId = goalRepository.save(Goal.create(userId, "여행 자금", 1_000_000, LocalDate.of(2026, 12, 25), 0)).getId();
     }
 
     @AfterEach
@@ -52,7 +54,7 @@ class GoalUpdateRaceIntegrationTest {
     }
 
     @Test
-    void 실적을_생략한_수정은_그_사이_확정이_더한_실적을_덮지_않는다() {
+    void 실적을_생략한_수정은_그_사이_확정이_더한_실적을_덮지_않고_예정일도_유지한다() {
         TransactionTemplate update = new TransactionTemplate(transactionManager);
         TransactionTemplate finalizeLastMonth = new TransactionTemplate(transactionManager);
         finalizeLastMonth.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -60,12 +62,14 @@ class GoalUpdateRaceIntegrationTest {
         update.executeWithoutResult(status -> {
             Goal alreadyRead = goalRepository.findByIdAndUserIdAndDeletedAtIsNull(goalId, userId).orElseThrow();
             finalizeLastMonth.executeWithoutResult(inner -> goalRepository.addCurrentAmount(goalId, 20_000));
-            alreadyRead.update("새 이름", 2_000_000, null);
+            alreadyRead.update("새 이름", 2_000_000, null, null);
         });
 
         Goal stored = goalRepository.findById(goalId).orElseThrow();
         assertEquals("새 이름", stored.getName());
         assertEquals(2_000_000, stored.getTargetAmount());
         assertEquals(20_000, stored.getCurrentAmount());
+        // target_date 왕복 — V10 컬럼과 LocalDate 매핑, 그리고 예정일도 생략하면 유지된다
+        assertEquals(LocalDate.of(2026, 12, 25), stored.getTargetDate());
     }
 }

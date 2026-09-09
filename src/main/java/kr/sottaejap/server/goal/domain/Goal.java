@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.DynamicUpdate;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 /**
@@ -45,6 +46,13 @@ public class Goal {
     @Column(name = "target_amount", nullable = false)
     private int targetAmount;
 
+    /**
+     * 목표 달성 예정일 (client PR #28). 선택 항목이다 — 지금 배포된 온보딩은 보내지 않고 기존 행에도 없다.
+     * 서버는 이 날짜로 아무것도 계산하지 않는다. D-day · 월 필요 저축액은 화면의 뺄셈 한 번이다.
+     */
+    @Column(name = "target_date")
+    private LocalDate targetDate;
+
     @Column(name = "current_amount", nullable = false)
     private int currentAmount;
 
@@ -55,11 +63,12 @@ public class Goal {
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    public static Goal create(Long userId, String name, int targetAmount, Integer currentAmount) {
+    public static Goal create(Long userId, String name, int targetAmount, LocalDate targetDate, Integer currentAmount) {
         Goal goal = new Goal();
         goal.userId = userId;
         goal.name = name;
         goal.targetAmount = targetAmount;
+        goal.targetDate = targetDate;
         goal.currentAmount = currentAmount == null ? 0 : currentAmount;
         return goal;
     }
@@ -72,10 +81,21 @@ public class Goal {
      * 이름만 고치는 요청이 실적을 0으로 되돌리면 안 된다. {@code POST}의 "생략하면 0"과 다른 이유다.
      * "그대로 두기"는 메모리의 값을 되쓰는 것이 아니라 <b>SQL에 그 컬럼을 싣지 않는 것</b>이다 (E-100) —
      * 월간 리포트 확정이 같은 행에 실적을 더하는 중이어도 덮지 않는다.
+     *
+     * <p>{@code targetDate}도 "생략하면 그대로 두기"다. 이유는 다르다 — 실적이 아니라 <b>화면이 아직
+     * 보내지 않기 때문</b>이다. 지금 배포된 마이페이지({@code GoalSettingsView.save()})는
+     * {@code name}·{@code targetAmount}만 싣는다. 생략을 "지움"으로 읽으면 이름만 고쳐도 온보딩에서
+     * 정한 예정일이 사라진다.
+     *
+     * <p>ponytail: 그래서 예정일을 API로 지울 방법이 없다 — 화면에 그 기능이 없어 그대로 둔다.
+     * 필요해지면 {@code JsonNullable}로 "생략"과 "명시적 null"을 가르는 것이 승급 경로다.
      */
-    public void update(String name, int targetAmount, Integer currentAmount) {
+    public void update(String name, int targetAmount, LocalDate targetDate, Integer currentAmount) {
         this.name = name;
         this.targetAmount = targetAmount;
+        if (targetDate != null) {
+            this.targetDate = targetDate;
+        }
         if (currentAmount != null) {
             this.currentAmount = currentAmount;
         }
