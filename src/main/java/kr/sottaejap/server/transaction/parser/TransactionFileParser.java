@@ -2,6 +2,9 @@ package kr.sottaejap.server.transaction.parser;
 
 import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse.SkippedRow;
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
+import org.apache.commons.compress.archivers.zip.ZipFile;
+import org.apache.commons.compress.utils.SeekableInMemoryByteChannel;
 import org.apache.poi.openxml4j.exceptions.OpenXML4JException;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.ss.usermodel.Cell;
@@ -30,6 +33,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -75,28 +79,41 @@ public class TransactionFileParser {
      *
      * <p>뒷장에는 걸지 않는다. {@link #readSheet}가 읽는 것은 첫 장뿐이라, 뒷장의 안내·약관 줄을 합쳐
      * 이 문턱에 대면 <b>상한 안의 내역을 담은 파일이 "거래내역이 너무 많아요"로 거절된다.</b>
-     * 뒷장이 만드는 것은 계약 문제가 아니라 메모리 문제라 {@link #MAX_SHEET_XML_BYTES}가 따로 막는다.
+     * 뒷장이 만드는 것은 계약 문제가 아니라 메모리 문제라 {@link #MAX_WORKBOOK_ROWS}와
+     * {@link #MAX_INFLATED_BYTES}가 따로 막는다.
      */
     private static final int MAX_SHEET_ROWS = MAX_ROWS + HEADER_SEARCH_LIMIT;
 
     /**
-     * 워크북 <b>전체</b> 워크시트 XML의 압축 푼 크기 상한 — 여는 비용에 거는 <b>메모리</b> 상한이다.
+     * 워크북 <b>전체</b> 행 상한 — 여는 비용에 거는 <b>메모리</b> 상한이다 ({@link #MAX_SHEET_ROWS}는 계약).
      * {@link #readSheet}는 첫 장만 쓰지만 {@code XSSFWorkbook}은 <b>모든 장</b>을 객체 모델로 올리므로,
      * 첫 장만 재면 뒷장에 수십만 행을 숨긴 파일이 그대로 {@code OutOfMemoryError} → 500이 된다.
      *
-     * <p><b>행이 아니라 바이트로 잰다.</b> 힙을 정하는 것은 행이 아니라 셀 개수인데, 같은 행수라도 칸 수가
-     * 열 배 다르다. 운영 힙 {@code -Xmx512m}에서 워크북을 열어 본 실측(POI 5.5.1 · JDK 21):
+     * <p>운영 힙 {@code -Xmx512m}에서 워크북을 열어 본 실측(POI 5.5.1 · JDK 21) — <b>좁고 긴</b> 시트가
+     * 이 문턱이 필요한 자리다. 400,000행 × 1칸(31.7MB)은 열리고 500,000행 × 1칸(39.7MB)은 터진다.
+     * 200,000은 그 절반이고 계약 상한의 열 배 위라, 안내·약관 장이 붙었다고 상한 안의 파일이 거절되지 않는다.
+     */
+    private static final int MAX_WORKBOOK_ROWS = 200_000;
+
+    /**
+     * 압축을 푼 <b>패키지 전체</b> 크기 상한 — {@link #MAX_WORKBOOK_ROWS}와 같은 메모리 상한인데 재는 것이 다르다.
+     * 힙을 정하는 것은 행이 아니라 <b>셀 개수</b>라, 같은 행수라도 칸이 넓으면 열 배를 쓴다. 같은 실측:
      *
      * <pre>
      * 200,000행 × 3칸  시트 XML 38.6MB  열림 2.0초      60,000행 × 10칸  35.9MB  열림 1.2초
      * 300,000행 × 3칸  시트 XML 58.2MB  OutOfMemory     80,000행 × 10칸  48.0MB  OutOfMemory
-     *                                                   40,000행 × 20칸  47.3MB  OutOfMemory
+     *                                                  40,000행 × 20칸  47.3MB  OutOfMemory
      * </pre>
      *
-     * 행수로는 60,000과 200,000 사이 어디에도 선을 그을 수 없지만 바이트로는 38.6MB(열림)와 47.3MB(OOM)
-     * 사이가 비어 있다. 32MB는 그 아래이면서, 계약 상한을 꽉 채운 파일(20,030행 × 20칸 ≈ 24MB)보다 위다.
+     * 행수로는 60,000과 200,000 사이에 선을 그을 수 없지만 바이트로는 38.6MB(열림)와 47.3MB(OOM) 사이가
+     * 비어 있다. 32MB는 그 아래이면서 계약 상한을 꽉 채운 파일(20,030행 × 20칸 ≈ 24MB)보다 위다.
+     * <b>두 문턱은 서로를 대신하지 못한다</b> — 넓은 시트는 바이트가, 좁고 긴 시트는 행수가 먼저 걸린다.
+     *
+     * <p>이 값을 <b>zip 중앙 디렉터리에서</b> 읽는 것이 중요하다 ({@link #inflatedBytes}). 압축을 풀어 보고
+     * 재면 이미 늦다 — {@code OPCPackage.open(InputStream)}은 한 행을 세기 전에 모든 파트를 힙 {@code byte[]}로
+     * 통째로 풀어서, 10MB 안에 드는 파일도 세기 전에 {@code OutOfMemoryError} → 500이 됐다 (PR #63 리뷰 실측).
      */
-    private static final long MAX_SHEET_XML_BYTES = 32L << 20;
+    private static final long MAX_INFLATED_BYTES = 32L << 20;
 
     /** {@code <row}까지만 맞추고 다음 글자로 {@code <rowBreaks>} 같은 다른 태그를 가른다. */
     private static final byte[] ROW_TAG = "<row".getBytes(StandardCharsets.US_ASCII);
@@ -211,13 +228,21 @@ public class TransactionFileParser {
         }
 
         /**
-         * XLSX 선계수 — 워크북 전체 워크시트 XML 크기. 계약 상한이 아니라 여는 비용이 이유다
-         * ({@link #MAX_SHEET_XML_BYTES}). 상한에서 읽기를 멈추므로 잰 값은 적지 않는다 — 실제 크기가
-         * 아니라 "여기까지 읽었다"는 값이라 파일 크기로 읽히면 곤란하다.
+         * XLSX 선계수 — 워크북 전체의 물리적 행. 계약 상한이 아니라 여는 비용이 이유다
+         * ({@link #MAX_WORKBOOK_ROWS}). 상한에서 읽기를 멈추므로 실제 행수는 이보다 크다.
          */
-        private static TooManyRowsException tooLargeToOpen() {
-            return new TooManyRowsException("워크시트 XML이 상한 " + (MAX_SHEET_XML_BYTES >> 20)
-                    + "MB를 넘습니다 — 워크북을 열면 힙이 모자랍니다.");
+        private static TooManyRowsException workbookRows(int rows) {
+            return new TooManyRowsException("워크북 전체 물리적 행이 " + rows + "행 이상이라 상한 "
+                    + MAX_WORKBOOK_ROWS + "행을 넘습니다 — 워크북을 열면 힙이 모자랍니다.");
+        }
+
+        /**
+         * XLSX 선계수 — 압축을 푼 패키지 크기. 이것도 여는 비용이 이유다 ({@link #MAX_INFLATED_BYTES}).
+         * zip 중앙 디렉터리에서 읽은 값이라 <b>확정값</b>이다 — 읽다 멈춘 값이 아니다.
+         */
+        private static TooManyRowsException tooLargeToOpen(long bytes) {
+            return new TooManyRowsException("압축을 풀면 " + bytes / (1 << 20) + "MB라 상한 "
+                    + (MAX_INFLATED_BYTES >> 20) + "MB를 넘습니다 — 워크북을 열면 힙이 모자랍니다.");
         }
     }
 
@@ -493,14 +518,18 @@ public class TransactionFileParser {
         // 512m 힙이 모자라고, 그때 나는 OutOfMemoryError는 Error라 아래 catch에 걸리지 않아 400이 아니라
         // 500이 된다 (이슈 #58). 운영은 한 대에 db·server·ai가 같이 뜨는 2GiB급이라 힙을 키워 막을 수 없다 (07 §12).
         //
-        // 문턱이 둘인 이유는 목적이 둘이기 때문이다 — 계약(첫 장 행수)과 메모리(워크북 전체 크기).
-        // 하나로 합쳐 뒷장을 첫 장에 더하면 상한 안의 내역을 담은 파일이 TOO_MANY_ROWS로 거절된다.
+        // 문턱이 셋인 이유는 재는 것이 셋이기 때문이다 — 계약(첫 장 행수)과 메모리(전체 행수 · 푼 크기).
+        // 계약과 메모리를 하나로 합쳐 뒷장을 첫 장에 더하면 상한 안의 내역을 담은 파일이 거절되고,
+        // 메모리를 행수로만 재면 넓은 시트가, 크기로만 재면 좁고 긴 시트가 빠져나간다 (PR #63 리뷰).
         SheetScan scan = measureSheets(content);
-        if (scan.rows() > MAX_SHEET_ROWS) {
-            throw TooManyRowsException.firstSheetRows(scan.rows());
+        if (scan.inflatedBytes() > MAX_INFLATED_BYTES) {
+            throw TooManyRowsException.tooLargeToOpen(scan.inflatedBytes());
         }
-        if (scan.bytes() > MAX_SHEET_XML_BYTES) {
-            throw TooManyRowsException.tooLargeToOpen();
+        if (scan.firstSheetRows() > MAX_SHEET_ROWS) {
+            throw TooManyRowsException.firstSheetRows(scan.firstSheetRows());
+        }
+        if (scan.workbookRows() > MAX_WORKBOOK_ROWS) {
+            throw TooManyRowsException.workbookRows(scan.workbookRows());
         }
         try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(content))) {
             List<RawRow> records = new ArrayList<>();
@@ -515,26 +544,26 @@ public class TransactionFileParser {
         }
     }
 
-    /** 선계수 결과. {@code rows}는 <b>첫 장</b>의 물리적 행, {@code bytes}는 <b>모든 장</b>의 워크시트 XML 크기. */
-    private record SheetScan(int rows, long bytes) {
+    /**
+     * 선계수 결과. {@code inflatedBytes}는 압축을 푼 패키지 전체 크기, {@code firstSheetRows}는 계약을
+     * 판정할 첫 장의 물리적 행, {@code workbookRows}는 메모리를 판정할 모든 장의 물리적 행 합이다.
+     */
+    private record SheetScan(long inflatedBytes, int firstSheetRows, int workbookRows) {
     }
 
     /**
-     * 워크시트 XML을 흘려보내며 첫 장의 {@code <row>} 여는 태그를 세고, 모든 장의 바이트를 더한다.
-     * 시트를 객체 모델로 만들지 않으므로 {@code XSSFWorkbook}으로 여는 것보다 훨씬 싸다
-     * (실측 — 200,000행 파일이 힙 128MB에서 0.1초).
+     * 워크북을 열기 전에 세 값을 잰다 — 푼 크기 · 첫 장 행수 · 전체 행수. 시트를 객체 모델로 만들지
+     * 않으므로 {@code XSSFWorkbook}으로 여는 것보다 훨씬 싸다 (실측 — 200,000행 파일이 0.2초).
      *
-     * <p><b>여기서도 메모리는 상수가 아니다.</b> {@code OPCPackage.open(InputStream)}은
-     * {@code ZipInputStreamZipEntrySource}를 타서 <b>한 행을 세기 전에 zip의 모든 파트를 힙 byte[]로
-     * 통째로 푼다</b> — 드는 메모리는 버퍼 하나가 아니라 O(압축 푼 크기)다. 그래서 압축비가 극단적인
-     * 파일(10MB zip이 수백 MB로 풀리는)은 세기 전에 {@code OutOfMemoryError} → 500이 남는다.
-     * 변경 전 경로({@code XSSFWorkbook})도 같은 {@code ZipPackage}를 타므로 이 PR이 만든 구멍은
-     * 아니고, 닫는 것은 후속이다 (랜덤 액세스로 여는 {@code ZipFile} + {@code SeekableInMemoryByteChannel}).
+     * <p><b>크기를 먼저, 그것도 압축을 풀기 전에 잰다.</b> {@code OPCPackage.open(InputStream)}은
+     * {@code ZipInputStreamZipEntrySource}를 타서 <b>한 행을 세기 전에 모든 파트를 힙 byte[]로 통째로
+     * 푼다</b> — 여기서 드는 메모리는 버퍼가 아니라 O(압축 푼 크기)다. 업로드 상한 10MB 안의 파일도
+     * 이 자리에서 {@code OutOfMemoryError} → 500이 됐다 (PR #63 리뷰 실측 — 9.19MB zip). 그래서
+     * {@link #inflatedBytes}가 zip 중앙 디렉터리만 읽어 크기를 확인하고, 넘으면 {@code OPCPackage}를
+     * 아예 부르지 않는다. 통과한 뒤에 푸는 것은 {@link #MAX_INFLATED_BYTES} 이하임이 확인된 바이트다.
      *
-     * <p>zip을 직접 열지 않고 {@link XSSFReader}를 쓴다. POI가 쓴 xlsx는 로컬 헤더에 크기를 적지 않아
-     * JDK {@code ZipInputStream}이 {@code invalid entry size}로 죽고, 그러면 이 메서드가 조용히 0을
-     * 돌려줘 상한이 통째로 꺼진다 — 실제로 그렇게 만들었다가 실측에서 잡았다. 시트 순서와 경로도
-     * 이름 규칙이 아니라 워크북 관계로 찾는 것이 맞다.
+     * <p>행을 셀 때는 zip을 직접 열지 않고 {@link XSSFReader}를 쓴다. 시트 순서와 경로를 이름 규칙이
+     * 아니라 워크북 관계로 찾아야 <b>첫 장</b>이 {@code getSheetAt(0)}과 같은 장이 된다.
      *
      * <p>상한을 넘으면 그 자리에서 멈춘다 — 끝까지 훑지 않는다.
      *
@@ -543,24 +572,50 @@ public class TransactionFileParser {
      * 지나가므로 로그를 남긴다 — 배포 뒤 "선계수가 실제로 도는가"를 확인할 자리가 여기뿐이다.
      */
     private static SheetScan measureSheets(byte[] content) {
-        int firstSheetRows = 0;
-        long bytes = 0;
-        try (OPCPackage xlsx = OPCPackage.open(new ByteArrayInputStream(content))) {
-            Iterator<InputStream> sheets = new XSSFReader(xlsx).getSheetsData();
-            for (boolean first = true; bytes <= MAX_SHEET_XML_BYTES && sheets.hasNext(); first = false) {
-                try (InputStream sheet = sheets.next()) {
-                    SheetScan scanned = scanSheet(sheet, MAX_SHEET_XML_BYTES - bytes);
-                    if (first) {
-                        firstSheetRows = scanned.rows();
+        try {
+            long inflated = inflatedBytes(content);
+            if (inflated > MAX_INFLATED_BYTES) {
+                // 여기서 멈춘다. 이 크기를 풀면 세는 쪽이 먼저 죽는다.
+                return new SheetScan(inflated, 0, 0);
+            }
+            int firstSheetRows = 0;
+            int workbookRows = 0;
+            try (OPCPackage xlsx = OPCPackage.open(new ByteArrayInputStream(content))) {
+                Iterator<InputStream> sheets = new XSSFReader(xlsx).getSheetsData();
+                for (boolean first = true; workbookRows <= MAX_WORKBOOK_ROWS && sheets.hasNext(); first = false) {
+                    try (InputStream sheet = sheets.next()) {
+                        int rows = countRowTags(sheet, MAX_WORKBOOK_ROWS - workbookRows);
+                        if (first) {
+                            firstSheetRows = rows;
+                        }
+                        workbookRows += rows;
                     }
-                    bytes += scanned.bytes();
                 }
             }
+            return new SheetScan(inflated, firstSheetRows, workbookRows);
         } catch (IOException | OpenXML4JException | RuntimeException cannotOpen) {
             log.warn("XLSX 선계수를 하지 못했습니다 — 상한 판정을 워크북 열기에 맡깁니다: {}", cannotOpen.toString());
-            return new SheetScan(0, 0);
+            return new SheetScan(0, 0, 0);
         }
-        return new SheetScan(firstSheetRows, bytes);
+    }
+
+    /**
+     * 압축을 풀지 않고 푼 뒤의 크기를 잰다. zip <b>중앙 디렉터리</b>에 파트마다 적혀 있는 값을 더할 뿐이라
+     * 파일이 몇 GB로 풀리든 여기서 드는 메모리는 목록 하나다.
+     *
+     * <p>commons-compress {@code ZipFile}을 쓰는 것은 <b>랜덤 액세스</b>이기 때문이다. JDK
+     * {@code ZipInputStream}은 앞에서부터 흘려 읽어 로컬 헤더만 보는데, POI가 쓴 xlsx는 거기에 크기를
+     * 적지 않아 {@code invalid entry size}로 죽는다. 새 의존성은 아니다 — POI가 데리고 오는 것이다.
+     */
+    private static long inflatedBytes(byte[] content) throws IOException {
+        try (ZipFile zip = ZipFile.builder().setSeekableByteChannel(new SeekableInMemoryByteChannel(content)).get()) {
+            long bytes = 0;
+            for (Enumeration<ZipArchiveEntry> entries = zip.getEntries(); entries.hasMoreElements(); ) {
+                // 크기를 적지 않은 파트는 -1이다. 0으로 보고 넘긴다 — 뒤의 행수 문턱이 다시 받는다.
+                bytes += Math.max(entries.nextElement().getSize(), 0);
+            }
+            return bytes;
+        }
     }
 
     /**
@@ -571,15 +626,13 @@ public class TransactionFileParser {
      * 인정하면 {@code <row\nr="1">}처럼 줄바꿈을 쓴 정상 워크시트가 <b>0행</b>으로 세어지고,
      * 0은 어떤 상한도 넘지 못해 가드가 말없이 꺼진다.
      *
-     * @param budget 이만큼 읽고 멈춘다. 넘겼다는 것만 알면 되고 정확한 값은 쓰이지 않는다.
+     * @param limit 이 수를 넘으면 더 읽지 않는다. 넘겼다는 것만 알면 되고 정확한 값은 쓰이지 않는다.
      */
-    private static SheetScan scanSheet(InputStream sheetXml, long budget) throws IOException {
+    private static int countRowTags(InputStream sheetXml, int limit) throws IOException {
         byte[] buffer = new byte[8192];
         int rows = 0;
-        long bytes = 0;
         int matched = 0;
-        for (int read; bytes <= budget && (read = sheetXml.read(buffer)) > 0; ) {
-            bytes += read;
+        for (int read; rows <= limit && (read = sheetXml.read(buffer)) > 0; ) {
             for (int i = 0; i < read; i++) {
                 byte b = buffer[i];
                 if (matched == ROW_TAG.length) {
@@ -595,7 +648,7 @@ public class TransactionFileParser {
                 }
             }
         }
-        return new SheetScan(rows, bytes);
+        return rows;
     }
 
     private static List<String> cellsOf(Row row) {

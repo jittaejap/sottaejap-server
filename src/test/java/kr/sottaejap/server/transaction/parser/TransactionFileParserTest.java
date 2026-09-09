@@ -408,10 +408,15 @@ class TransactionFileParserTest {
     /**
      * 뒷장이 만드는 것은 계약 문제가 아니라 <b>메모리</b> 문제다. {@code XSSFWorkbook}은 첫 장만 쓰더라도
      * 모든 장을 객체 모델로 올리므로, 뒷장에 큰 시트를 숨긴 파일은 열자마자 {@code OutOfMemoryError} →
-     * 500이 된다. 열기 전에 워크시트 XML 크기로 막는다.
+     * 500이 된다.
      *
-     * <p>픽스처의 첫 장은 세 줄뿐이라 <b>계약 상한에는 걸리지 않는다</b> — 여기서 거절이 나온다는 것은
-     * 행이 아니라 크기로 걸렀다는 뜻이다.
+     * <p>메모리 문턱이 <b>둘</b>인 이유가 이 두 테스트다. <b>넓은</b> 시트는 행이 적어도 셀이 많아
+     * 크기로 걸러야 하고, <b>좁고 긴</b> 시트는 같은 크기에 훨씬 많은 행을 담아 행수로 걸러야 한다 —
+     * 하나만 두면 나머지 하나가 그대로 빠져나간다 (PR #63 리뷰 실측 — 500,000행 × 1칸이 30.2MB로
+     * 크기 문턱 아래인 채 `XSSFWorkbook`에서 OOM).
+     *
+     * <p>두 픽스처 모두 첫 장은 세 줄뿐이라 <b>계약 상한에는 걸리지 않는다</b> — 거절이 나온다는 것은
+     * 첫 장 행수가 아닌 다른 문턱이 걸렀다는 뜻이고, 어느 쪽인지는 메시지로 가른다.
      */
     @Test
     void XLSX는_열면_힙이_모자랄_크기의_뒷장을_열기_전에_거절한다() {
@@ -420,7 +425,17 @@ class TransactionFileParserTest {
         TransactionFileParser.TooManyRowsException rejected = assertThrows(
                 TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
 
-        assertTrue(rejected.getMessage().startsWith("워크시트 XML이"), rejected.getMessage());
+        assertTrue(rejected.getMessage().startsWith("압축을 풀면"), rejected.getMessage());
+    }
+
+    @Test
+    void XLSX는_크기_문턱_아래여도_뒷장이_길면_열기_전에_거절한다() {
+        byte[] file = workbookWithLongSecondSheet();
+
+        TransactionFileParser.TooManyRowsException rejected = assertThrows(
+                TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
+
+        assertTrue(rejected.getMessage().startsWith("워크북 전체 물리적 행이"), rejected.getMessage());
     }
 
     /** 머리글 아래 {@code rows}행이 든 한 장짜리 워크북. */
@@ -446,22 +461,32 @@ class TransactionFileParserTest {
         }
     }
 
+    /** 첫 장은 세 줄, 뒷장은 <b>넓어서</b>(50칸) 압축을 풀면 상한 32MB를 넘는 워크북. */
+    private static byte[] workbookWithLargeSecondSheet() {
+        return withSecondSheet(12_000, 50);
+    }
+
+    /** 첫 장은 세 줄, 뒷장은 <b>좁고 길어서</b>(1칸) 크기는 상한 아래인데 행수 상한 200,000을 넘는 워크북. */
+    private static byte[] workbookWithLongSecondSheet() {
+        return withSecondSheet(200_100, 1);
+    }
+
     /**
-     * 첫 장은 세 줄, 뒷장은 워크시트 XML이 상한(32MB)을 넘는 워크북.
+     * 첫 장은 머리글 + 두 줄, 뒷장은 {@code rows}행 × {@code cells}칸인 워크북.
      *
      * <p>메모리를 아끼려고 {@link SXSSFWorkbook}(창 100행)으로 쓴다 — 픽스처를 만드느라 테스트 JVM이
-     * 먼저 OOM으로 죽으면 확인하려던 것을 확인하지 못한다. 칸을 50개로 넓혀 행수를 줄인다.
+     * 먼저 OOM으로 죽으면 확인하려던 것을 확인하지 못한다.
      */
-    private static byte[] workbookWithLargeSecondSheet() {
+    private static byte[] withSecondSheet(int rows, int cells) {
         try (SXSSFWorkbook workbook = new SXSSFWorkbook(100);
              ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
             Sheet transactions = workbook.createSheet("이용내역");
             header(transactions, 0, "거래일시", "가맹점명", "금액");
             fill(transactions, 1, 2);
-            Sheet large = workbook.createSheet("이용안내");
-            for (int i = 0; i < 12_000; i++) {
-                Row row = large.createRow(i);
-                for (int cell = 0; cell < 50; cell++) {
+            Sheet second = workbook.createSheet("이용안내");
+            for (int i = 0; i < rows; i++) {
+                Row row = second.createRow(i);
+                for (int cell = 0; cell < cells; cell++) {
                     // 같은 글자를 반복하면 압축비가 100배를 넘어 POI가 zip bomb으로 먼저 거절한다.
                     row.createCell(cell).setCellValue("이용안내 " + i + "-" + cell + " 문구가 이어집니다");
                 }
