@@ -21,7 +21,7 @@
 | `main` | `bf5efd8` — PR #62(#61 `recentMessages` 항목 상한 role별 · E-110) 병합. CI · Deploy success |
 | 배포 | `main` 병합 → CI 통과 → `deploy.yml`이 EC2로 자동 배포. **EC2는 프리티어**(README 배포 문단) |
 | 테스트 | 전체 빌드 540건대, DB 통합 포함. CI는 `RUN_DB_INTEGRATION_TESTS=true`로 돈다 |
-| 열린 PR | **#63**(#58 XLSX 스트리밍 카운트 + 힙 명시, CI pass) — 리뷰 대기 |
+| 열린 PR | **#63**(#58 XLSX 스트리밍 카운트 + 힙 명시) · **#68**(#67 잔손질 3건 · 575건 · 건너뜀 0) — 둘 다 리뷰 대기 |
 | 열린 이슈 | **#58**(→ PR #63) · **#67**(리뷰 후속 잔손질 3건 묶음) 둘뿐이다. 9/9 저녁에 정돈했다 — #60 · #66 · #57을 #67로 통합하고, #49는 닫아 06 R33으로만 추적한다(06 v2.52) |
 | docs | 01 v2.35 · 05 v2.36 · 06 v2.52. 06이 정본 진행표다 |
 
@@ -34,8 +34,8 @@
 
 | 이슈 | 다음 한 걸음 | 크기 |
 | --- | --- | --- |
-| **#67** 리뷰 후속 잔손질 3건 (구 #60 · #66 · #57) | 브랜치 하나 · PR 하나로 셋을 끝낸다. ① `RetrospectChatRequest.message`에 `@Size(max = 500)` — **05 §2 #11에 먼저 한 줄**(1~500자) · 01 E-번호 채번 · 검증 테스트. ② `TransactionServiceImpl.truncate`(`:177`)를 `codePointCount` · `offsetByCodePoints`로 — `ClusterNameTemplate.truncate`(#20 · E-110)와 같은 셈법, 공통 헬퍼 추출은 하지 않는다. ③ `rules/aggregate/PendingSummary.java` javadoc 한 단락 — "`ANALYSIS_NARRATE`의 `state`에는 싣지 않는다(E-75). 내부 AI Tool 응답(`InternalAnalysisResponse`)에는 싣는다(ai #50)". 파일 셋이 서로 달라 충돌하지 않는다 | 1시간 |
-| **PR #63 리뷰** | 작성자가 같은 사람이라 리뷰는 통합 담당(고현석) 또는 이어받는 사람이 한다. 리뷰 방식은 §4-7 | — |
+| **#67** 리뷰 후속 잔손질 3건 (구 #60 · #66 · #57) — **PR #68 리뷰 대기** | 브랜치 하나 · PR 하나로 셋을 끝냈다. ① `RetrospectChatRequest.message`에 `@Size(max = 500)` — **05 §2 #11에 먼저 한 줄**(1~500자) · 01 E-번호 채번 · 검증 테스트. ② `TransactionServiceImpl.truncate`(`:177`)를 `codePointCount` · `offsetByCodePoints`로 — `ClusterNameTemplate.truncate`(#20 · E-110)와 같은 셈법, 공통 헬퍼 추출은 하지 않는다. ③ `rules/aggregate/PendingSummary.java` javadoc 한 단락 — "`ANALYSIS_NARRATE`의 `state`에는 싣지 않는다(E-75). 내부 AI Tool 응답(`InternalAnalysisResponse`)에는 싣는다(ai #50)". 파일 셋이 서로 달라 충돌하지 않는다 | 1시간 |
+| **PR #63 · #68 리뷰** | 작성자가 같은 사람이라 리뷰는 통합 담당(고현석) 또는 이어받는 사람이 한다. 리뷰 방식은 §4-7 | — |
 
 ### 3-2. 입력이 있어야 시작되는 것
 
