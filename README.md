@@ -75,7 +75,7 @@ DB가 필요한 컨텍스트 테스트는 로컬에서 기본으로 건너뜁니
 src/main/java/kr/sottaejap/server/
 ├── auth/         JWT 발급·검증 · Bearer 필터 · 데모 로그인 · kakao/ 인가 코드 교환·프로필 조회 (E-55)
 ├── user/         User · GET /users/me · PUT /users/me/settings (예산 · 임계값 · D+N)
-├── transaction/  거래 업로드 · CSV 파서 · 조회
+├── transaction/  거래 업로드 · CSV 파서 · 목록 조회(회고 요약 · hasRetrospect 필터 · 페이징, E-93)
 ├── notification/ 인앱 알림 목록·읽음 · Web Push 구독 · 결제 시각 스케줄로 회고 요청 1건 생성 (FR-10)
 ├── retrospect/   회고 저장 · 후보 선별 · 대화 턴 프록시 · BehaviorCluster upsert (E-57~E-66)
 ├── analysis/     만족도 지도 · 소비 분석 · 묶음 조회 · '나만의 특징' 문장 (E-72~E-76)

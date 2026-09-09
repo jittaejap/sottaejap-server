@@ -1,6 +1,8 @@
 package kr.sottaejap.server.transaction.service;
 
 import kr.sottaejap.server.transaction.dto.TransactionAiView;
+import kr.sottaejap.server.transaction.dto.TransactionListQuery;
+import kr.sottaejap.server.transaction.dto.TransactionListResponse;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -16,6 +18,12 @@ public interface TransactionService {
      * 참조로 기동이 죽는다.
      */
     TransactionUploadResponse upload(long userId, MultipartFile file);
+
+    /**
+     * 05 §2 `GET /transactions` — 기간 · 카테고리 · 회고 여부로 거른 목록과 회고 요약 (E-93 · FR-02-02).
+     * {@code size}는 100을 넘으면 100으로 자르고, 1 미만 · 음수 {@code page} · {@code from > to}는 400이다.
+     */
+    TransactionListResponse list(long userId, TransactionListQuery query);
 
     /** AI `SpringClient.get_transactions`가 쓰는 조회 (05 §3). */
     List<TransactionAiView> findForAi(long userId, LocalDate from, LocalDate to, String category, Integer size);

@@ -3,14 +3,20 @@ package kr.sottaejap.server.transaction.service;
 import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.common.exception.BusinessException;
 import kr.sottaejap.server.common.exception.CommonErrorCode;
+import kr.sottaejap.server.retrospect.domain.Retrospect;
+import kr.sottaejap.server.retrospect.repository.RetrospectRepository;
 import kr.sottaejap.server.transaction.domain.Transaction;
 import kr.sottaejap.server.transaction.dto.TransactionAiView;
+import kr.sottaejap.server.transaction.dto.TransactionListQuery;
+import kr.sottaejap.server.transaction.dto.TransactionListResponse;
+import kr.sottaejap.server.transaction.dto.TransactionView;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse.SkippedRow;
 import kr.sottaejap.server.transaction.parser.TransactionFileParser;
 import kr.sottaejap.server.transaction.parser.TransactionFileParser.ParsedRow;
 import kr.sottaejap.server.transaction.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,7 +35,10 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +48,8 @@ public class TransactionServiceImpl implements TransactionService {
     private static final String DEFAULT_CATEGORY = "기타";
     private static final int DEFAULT_AI_PAGE_SIZE = 100;
     private static final int MAX_AI_PAGE_SIZE = 1000;
+    /** 05 §2 `GET /transactions` — size 상한. 넘으면 400이 아니라 100으로 자른다 (E-93). */
+    private static final int MAX_LIST_PAGE_SIZE = 100;
 
     // V1 스키마의 컬럼 길이. 긴 셀 하나 때문에 업로드 전체가 500이 되지 않도록 여기서 자른다.
     private static final int MERCHANT_MAX_LENGTH = 255;
@@ -47,6 +58,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final TransactionFileParser parser;
+    private final RetrospectRepository retrospectRepository;
 
     @Override
     @Transactional
@@ -86,18 +98,56 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional(readOnly = true)
+    public TransactionListResponse list(long userId, TransactionListQuery query) {
+        // 1 미만 size와 음수 page는 페이지를 만들 수 없고, from > to는 빈 결과가 아니라 잘못된 요청이다 (05 §2).
+        if (query.size() < 1 || query.page() < 0
+                || (query.from() != null && query.to() != null && query.from().isAfter(query.to()))) {
+            throw new BusinessException(CommonErrorCode.INVALID_INPUT);
+        }
+        int size = Math.min(query.size(), MAX_LIST_PAGE_SIZE);
+        Page<Transaction> page = transactionRepository.search(
+                userId,
+                startOfDay(query.from()),
+                endOfDayExclusive(query.to()),
+                blankToNull(query.category()),
+                query.hasRetrospect(),
+                PageRequest.of(query.page(), size));
+
+        // 회고 요약은 이 페이지의 거래에 대해서만 한 번에 읽는다. 거래당 하나(UNIQUE)라 id로 바로 맵을 만든다.
+        Map<Long, Retrospect> retrospectByTransactionId = page.isEmpty() ? Map.of()
+                : retrospectRepository.findAllByTransactionIdIn(page.map(Transaction::getId).getContent()).stream()
+                        .collect(Collectors.toMap(Retrospect::getTransactionId, Function.identity()));
+        List<TransactionView> transactions = page.getContent().stream()
+                .map(transaction -> TransactionView.of(transaction, retrospectByTransactionId.get(transaction.getId())))
+                .toList();
+        return new TransactionListResponse(transactions, page.getNumber(), size,
+                page.getTotalElements(), page.getTotalPages());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<TransactionAiView> findForAi(long userId, LocalDate from, LocalDate to, String category, Integer size) {
         int pageSize = size == null || size <= 0 ? DEFAULT_AI_PAGE_SIZE : Math.min(size, MAX_AI_PAGE_SIZE);
-        return transactionRepository.search(
-                        userId,
-                        from == null ? null : from.atStartOfDay(TimeSlot.ZONE).toOffsetDateTime(),
-                        // to는 그날을 포함해야 하므로 다음 날 0시 미만으로 본다.
-                        to == null ? null : to.plusDays(1).atStartOfDay(TimeSlot.ZONE).toOffsetDateTime(),
-                        category == null || category.isBlank() ? null : category,
-                        PageRequest.of(0, pageSize))
+        return transactionRepository.search(userId, startOfDay(from), endOfDayExclusive(to), blankToNull(category),
+                        null, PageRequest.of(0, pageSize))
+                .getContent()
                 .stream()
                 .map(TransactionAiView::from)
                 .toList();
+    }
+
+    /** KST 날짜의 0시. 날짜가 없으면 조건 없음. */
+    private static OffsetDateTime startOfDay(LocalDate date) {
+        return date == null ? null : date.atStartOfDay(TimeSlot.ZONE).toOffsetDateTime();
+    }
+
+    /** to는 그날을 포함해야 하므로 다음 날 0시 미만으로 본다. */
+    private static OffsetDateTime endOfDayExclusive(LocalDate date) {
+        return date == null ? null : date.plusDays(1).atStartOfDay(TimeSlot.ZONE).toOffsetDateTime();
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     /** 05 §2는 CSV와 XLSX를 받는다. 확장자로 읽는 방법만 고르고, 서식은 파서가 머리글로 가른다 (04 §4). */
