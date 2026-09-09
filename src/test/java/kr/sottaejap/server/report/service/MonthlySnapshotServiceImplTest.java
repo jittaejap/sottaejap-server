@@ -30,6 +30,7 @@ import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -47,8 +48,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * 시점 규칙 — 지난달은 첫 조회 때 확정 · 이번 달은 미저장 · 확정 시 1회 배분 (E-94 ③ ④). 산식 자체는
- * {@code MonthlyDeltaRuleTest}가 본다.
+ * 시점 규칙 — 지난달 이전은 첫 조회 때 확정 · 이번 달은 미저장 · 직전 달 확정 시 1회 배분 · 확정된 달은 전월 값까지
+ * 굳는다 (E-94 ③ ④). 산식 자체는 {@code MonthlyDeltaRuleTest}가 본다.
  */
 @ExtendWith(MockitoExtension.class)
 class MonthlySnapshotServiceImplTest {
@@ -101,7 +102,7 @@ class MonthlySnapshotServiceImplTest {
     }
 
     @Test
-    void 지난달은_첫_조회_때_계산해_저장하고_감소액을_목표에_배분한다() {
+    void 직전_달은_첫_조회_때_계산해_저장하고_감소액을_DB에서_원자적으로_배분한다() {
         givenTransactions(
                 transaction(1L, "2026-07-10T12:00:00+09:00", 60_000, null),
                 transaction(2L, "2026-08-20T23:10:00+09:00", 12_000, 10L),
@@ -113,9 +114,8 @@ class MonthlySnapshotServiceImplTest {
                 .thenReturn(List.of(cluster(10L, EvaluationStatus.RESOLVED, Verdict.ADJUST)));
         when(behaviorClusterRepository.findAllByParentIdIn(any())).thenReturn(List.of());
         when(monthlySnapshotRepository.insertIfAbsent(USER_ID, "2026-08", 31_000, 2, 2, 29_000)).thenReturn(1);
-        MonthlySnapshot saved = snapshot("2026-08", 31_000, 2, 2, 29_000);
         when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-08"))
-                .thenReturn(Optional.empty(), Optional.of(saved));
+                .thenReturn(Optional.empty(), Optional.of(snapshot("2026-08", 31_000, 2, 2, 29_000)));
         // 목표 둘 — 채택 절감액 3 : 1. 세 번째 목표는 채택 제안이 없어 배분 대상이 아니다
         when(goalService.list(USER_ID)).thenReturn(new GoalListResponse(List.of(
                 new GoalView(1L, "여행", 1_000_000, 100_000, 30_000, 0.1, 0.13),
@@ -130,7 +130,8 @@ class MonthlySnapshotServiceImplTest {
         assertEquals(29_000, response.savedAmount());
         assertEquals(2, response.unsatisfiedCount());
         assertEquals(2, response.repeatCount());
-        assertEquals(0, response.previousRepeatCount());
+        // 7월 스냅샷이 없으니 전월 반복 횟수는 비워 둔다 — 지금 거래로 세면 나중에 흔들린다
+        assertNull(response.previousRepeatCount());
         assertEquals(List.of(new GoalAllocationView(1L, 21_750), new GoalAllocationView(2L, 7_250)),
                 response.goalAllocations());
         // 엔티티를 읽어 더하지 않고 DB에서 더한다 — 다른 달을 동시에 확정해도 앞의 배분이 증발하지 않는다
@@ -148,7 +149,7 @@ class MonthlySnapshotServiceImplTest {
                 .thenReturn(List.of(cluster(10L, EvaluationStatus.RESOLVED, Verdict.ADJUST),
                         cluster(20L, EvaluationStatus.RESOLVED, Verdict.SUSTAIN)));
         // 10의 자식 리프 11 — 12는 SUSTAIN 묶음(20)의 자식이라 대상이 아니다
-        when(behaviorClusterRepository.findAllByParentIdIn(java.util.Set.of(10L)))
+        when(behaviorClusterRepository.findAllByParentIdIn(Set.of(10L)))
                 .thenReturn(List.of(cluster(11L, EvaluationStatus.PENDING, null)));
 
         MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, AUGUST);
@@ -157,34 +158,49 @@ class MonthlySnapshotServiceImplTest {
     }
 
     @Test
-    void 이미_확정된_달은_저장된_값을_돌려주고_다시_계산하지_않는다() {
+    void 이미_확정된_달은_저장된_값만_돌려주고_거래_회고_묶음을_읽지_않는다() {
         when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-08"))
                 .thenReturn(Optional.of(snapshot("2026-08", 31_000, 2, 2, 29_000)));
         when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-07"))
                 .thenReturn(Optional.of(snapshot("2026-07", 60_000, 0, 5, null)));
-        // 그 뒤 거래가 더 들어왔어도(확정 뒤 업로드) 숫자는 그대로다
-        givenTransactions(transaction(9L, "2026-08-30T12:00:00+09:00", 99_000, null));
 
         MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
 
         assertTrue(response.finalized());
         assertEquals(31_000, response.totalSpending());
         assertEquals(29_000, response.savedAmount());
+        // 전월 합은 저장된 감소액에서 역산 — 31,000 + 29,000
         assertEquals(60_000, response.previousTotalSpending());
         assertEquals(5, response.previousRepeatCount());
         assertTrue(response.goalAllocations().isEmpty());
-        verify(monthlySnapshotRepository, never()).insertIfAbsent(anyLong(), anyString(), anyInt(), anyInt(), anyInt(), any());
-        verifyNoInteractions(goalService, goalRepository);
+        verifyNoInteractions(transactionRepository, retrospectRepository, behaviorClusterRepository, goalService, goalRepository);
+    }
+
+    @Test
+    void 확정된_달의_전월_값은_지금_거래로_다시_세지_않는다() {
+        // 8월은 전월 없이(savedAmount null) 확정됐고, 그 뒤 7월 거래가 올라왔다 — 7월 스냅샷은 아직 없다
+        when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-08"))
+                .thenReturn(Optional.of(snapshot("2026-08", 31_000, 0, 0, null)));
+        lenient().when(transactionRepository.findAllInRange(eq(USER_ID), any(), any()))
+                .thenReturn(List.of(transaction(1L, "2026-07-10T12:00:00+09:00", 60_000, 10L)));
+
+        MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
+
+        // previousTotalSpending − totalSpending = savedAmount 가 응답 안에서 성립해야 한다 — 60,000이 끼어들면 깨진다
+        assertNull(response.savedAmount());
+        assertNull(response.previousTotalSpending());
+        assertNull(response.previousRepeatCount());
+        verifyNoInteractions(transactionRepository, retrospectRepository, behaviorClusterRepository);
     }
 
     @Test
     void 전월_데이터가_없으면_감소액과_전월_값은_null이고_배분도_없다() {
-        givenTransactions(transaction(1L, "2026-07-10T12:00:00+09:00", 60_000, null));
-        when(monthlySnapshotRepository.insertIfAbsent(USER_ID, "2026-07", 60_000, 0, 0, null)).thenReturn(1);
-        when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-07"))
-                .thenReturn(Optional.empty(), Optional.of(snapshot("2026-07", 60_000, 0, 0, null)));
+        givenTransactions(transaction(1L, "2026-08-10T12:00:00+09:00", 60_000, null));
+        when(monthlySnapshotRepository.insertIfAbsent(USER_ID, "2026-08", 60_000, 0, 0, null)).thenReturn(1);
+        when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-08"))
+                .thenReturn(Optional.empty(), Optional.of(snapshot("2026-08", 60_000, 0, 0, null)));
 
-        MonthlyReportResponse response = service.monthly(USER_ID, JULY, SEPTEMBER);
+        MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
 
         assertTrue(response.finalized());
         assertEquals(60_000, response.totalSpending());
@@ -255,6 +271,7 @@ class MonthlySnapshotServiceImplTest {
         MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
 
         assertTrue(response.goalAllocations().isEmpty());
+        verifyNoInteractions(goalRepository);
     }
 
     private void givenTransactions(Transaction... transactions) {

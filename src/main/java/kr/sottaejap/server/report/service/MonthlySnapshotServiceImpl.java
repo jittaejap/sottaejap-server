@@ -37,13 +37,19 @@ import java.util.stream.Collectors;
 /**
  * 월간 리포트 (E-94 · 04 §3 MonthlySnapshot).
  *
- * <p><b>지난달은 첫 조회 때 확정, 이번 달은 매번 계산.</b> 지난달 스냅샷이 있으면 그대로 돌려주고 다시 계산하지
- * 않는다 — 회고를 더할 때마다 지난달 숫자가 흔들리면 안 된다. 없으면 계산해 넣고, 그 요청에서만 {@code savedAmount > 0}을
- * ADOPTED 제안이 붙은 목표에 배분한다. 확정과 배분은 이 클래스의 {@code @Transactional} 하나 안이라 두 번 더해지지
- * 않는다. 동시에 들어온 첫 조회 둘은 {@link MonthlySnapshotRepository#insertIfAbsent}가 가른다.
+ * <p><b>지난달 이전은 첫 조회 때 확정, 이번 달은 매번 계산.</b> 스냅샷이 있으면 그대로 돌려주고 거래 · 회고 · 묶음을
+ * 읽지도 않는다 — 회고를 더할 때마다 지난달 숫자가 흔들리면 안 된다. 없으면 계산해 넣는다. 동시에 들어온 첫 조회
+ * 둘은 {@link MonthlySnapshotRepository#insertIfAbsent}가 가른다.
  *
- * <p>전월 값은 <b>전월 스냅샷이 있으면 그것</b>이고, 없으면 지금 거래로 계산하되 저장하지 않는다 — 전월을 확정하는
- * 것은 전월을 조회하는 요청이다. 전월에 거래도 스냅샷도 없으면 "전월 없음"이라 {@code savedAmount}가 null이다.
+ * <p>배분은 {@link GoalRepository#addCurrentAmount}로 DB에서 원자적으로 더한다.
+ *
+ * <p><b>확정된 달의 전월 값도 굳어 있다.</b> {@code previousTotalSpending}은 저장된 {@code savedAmount}에서 역산하고
+ * (04 §3의 식 {@code savedAmount = previousTotalSpending − totalSpending}이 응답 안에서 항상 성립한다),
+ * {@code previousRepeatCount}는 전월 스냅샷이 있으면 그 값, 없으면 null이다 — 전월이 나중에 확정되면 한 번 채워지고
+ * 그 뒤로는 움직이지 않는다. 지금 거래로 다시 세면 전월 회고 하나에 확정된 달의 응답이 바뀐다.
+ *
+ * <p>확정하지 않은 달(이번 달)의 전월 값은 전월 스냅샷이 있으면 그것, 없으면 지금 거래로 계산하고
+ * 저장하지 않는다. 전월에 거래도 스냅샷도 없으면 "전월 없음"이라 {@code savedAmount}가 null이다.
  */
 @Service
 @RequiredArgsConstructor
@@ -60,21 +66,19 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
     @Transactional
     public MonthlyReportResponse monthly(long userId, YearMonth month, YearMonth currentMonth) {
         YearMonth previousMonth = month.minusMonths(1);
-        Optional<MonthlySnapshot> stored = monthlySnapshotRepository.findByUserIdAndYearMonth(userId, MonthlySnapshot.text(month));
         Optional<MonthlySnapshot> previousStored =
                 monthlySnapshotRepository.findByUserIdAndYearMonth(userId, MonthlySnapshot.text(previousMonth));
-
-        // 전월 스냅샷이 있으면 거래는 이번 달만 필요하지만, 두 달치 거래를 한 번에 읽는 편이 질의가 적다.
-        List<MonthlyTransaction> transactions = load(userId, previousMonth, month);
-        Previous previous = previousStored.map(Previous::of)
-                .orElseGet(() -> Previous.computed(transactions, previousMonth));
-
+        Optional<MonthlySnapshot> stored = monthlySnapshotRepository.findByUserIdAndYearMonth(userId, MonthlySnapshot.text(month));
         if (stored.isPresent()) {
-            return finalizedResponse(stored.get(), previous, List.of());
+            return finalizedResponse(stored.get(), previousStored, List.of());
         }
 
+        List<MonthlyTransaction> transactions = load(userId, previousMonth, month);
         MonthlyFigures figures = MonthlyDeltaRule.figures(transactions, month);
+        Previous previous = previousStored.map(Previous::of)
+                .orElseGet(() -> Previous.computed(transactions, previousMonth));
         Integer savedAmount = MonthlyDeltaRule.savedAmount(previous.totalSpending(), figures.totalSpending());
+
         if (!month.isBefore(currentMonth)) {
             return new MonthlyReportResponse(MonthlySnapshot.text(month), false,
                     figures.totalSpending(), previous.totalSpending(), savedAmount,
@@ -86,7 +90,7 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
         List<GoalAllocation> allocations = inserted == 1 ? allocate(userId, savedAmount) : List.of();
         MonthlySnapshot snapshot = monthlySnapshotRepository.findByUserIdAndYearMonth(userId, MonthlySnapshot.text(month))
                 .orElseThrow(() -> new IllegalStateException("방금 넣었거나 다른 요청이 넣은 스냅샷이 없습니다: " + month));
-        return finalizedResponse(snapshot, previous, allocations);
+        return finalizedResponse(snapshot, previousStored, allocations);
     }
 
     /**
@@ -129,7 +133,6 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
     /**
      * 확정 시 1회 배분 (E-94 ④). 대상은 ADOPTED 제안이 붙은 목표이고 가중치는 그 목표의 {@code adoptedSaving}
      * ({@code GET /goals}가 세는 값과 같은 것, E-83)이다. 삭제한 목표는 목록에 없으므로 배분에서도 빠진다.
-     * 갱신은 {@link GoalRepository#addCurrentAmount}로 DB에서 더한다 — 다른 달을 동시에 확정해도 앞의 배분이 남는다.
      */
     private List<GoalAllocation> allocate(long userId, Integer savedAmount) {
         if (savedAmount == null || savedAmount <= 0) {
@@ -146,11 +149,16 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
         return allocations;
     }
 
-    private static MonthlyReportResponse finalizedResponse(MonthlySnapshot snapshot, Previous previous,
+    /** 확정된 달 — 세 숫자는 저장값이고 전월 값도 거기서만 나온다. */
+    private static MonthlyReportResponse finalizedResponse(MonthlySnapshot snapshot, Optional<MonthlySnapshot> previousStored,
                                                            List<GoalAllocation> allocations) {
+        Integer previousTotalSpending = snapshot.getSavedAmount() == null
+                ? null
+                : snapshot.getTotalSpending() + snapshot.getSavedAmount();
+        Integer previousRepeatCount = previousStored.map(MonthlySnapshot::getRepeatCount).orElse(null);
         return new MonthlyReportResponse(snapshot.getYearMonth(), true,
-                snapshot.getTotalSpending(), previous.totalSpending(), snapshot.getSavedAmount(),
-                snapshot.getUnsatisfiedCount(), snapshot.getRepeatCount(), previous.repeatCount(),
+                snapshot.getTotalSpending(), previousTotalSpending, snapshot.getSavedAmount(),
+                snapshot.getUnsatisfiedCount(), snapshot.getRepeatCount(), previousRepeatCount,
                 allocations.stream().map(GoalAllocationView::from).toList());
     }
 
@@ -158,7 +166,7 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
         return month.atDay(1).atStartOfDay(TimeSlot.ZONE).toOffsetDateTime();
     }
 
-    /** 전월 값. 둘 다 null이면 "전월 없음"이다. */
+    /** 확정하지 않은 달의 전월 값. 둘 다 null이면 "전월 없음"이다. */
     private record Previous(Integer totalSpending, Integer repeatCount) {
 
         static Previous of(MonthlySnapshot snapshot) {
