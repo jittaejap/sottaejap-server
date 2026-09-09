@@ -4,7 +4,6 @@ import kr.sottaejap.server.common.enums.EvaluationStatus;
 import kr.sottaejap.server.common.enums.RetrospectSource;
 import kr.sottaejap.server.common.enums.Satisfaction;
 import kr.sottaejap.server.common.enums.Verdict;
-import kr.sottaejap.server.goal.domain.Goal;
 import kr.sottaejap.server.goal.dto.GoalListResponse;
 import kr.sottaejap.server.goal.dto.GoalView;
 import kr.sottaejap.server.goal.repository.GoalRepository;
@@ -118,13 +117,10 @@ class MonthlySnapshotServiceImplTest {
         when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-08"))
                 .thenReturn(Optional.empty(), Optional.of(saved));
         // 목표 둘 — 채택 절감액 3 : 1. 세 번째 목표는 채택 제안이 없어 배분 대상이 아니다
-        Goal travel = goal(1L, 100_000);
-        Goal laptop = goal(2L, 0);
         when(goalService.list(USER_ID)).thenReturn(new GoalListResponse(List.of(
                 new GoalView(1L, "여행", 1_000_000, 100_000, 30_000, 0.1, 0.13),
                 new GoalView(2L, "노트북", 500_000, 0, 10_000, 0.0, 0.02),
                 new GoalView(3L, "비상금", 300_000, 0, 0, 0.0, 0.0))));
-        when(goalRepository.findAllById(List.of(1L, 2L))).thenReturn(List.of(travel, laptop));
 
         MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
 
@@ -137,8 +133,10 @@ class MonthlySnapshotServiceImplTest {
         assertEquals(0, response.previousRepeatCount());
         assertEquals(List.of(new GoalAllocationView(1L, 21_750), new GoalAllocationView(2L, 7_250)),
                 response.goalAllocations());
-        assertEquals(121_750, travel.getCurrentAmount());
-        assertEquals(7_250, laptop.getCurrentAmount());
+        // 엔티티를 읽어 더하지 않고 DB에서 더한다 — 다른 달을 동시에 확정해도 앞의 배분이 증발하지 않는다
+        verify(goalRepository).addCurrentAmount(1L, 21_750);
+        verify(goalRepository).addCurrentAmount(2L, 7_250);
+        verify(goalRepository, never()).findAllById(any());
     }
 
     @Test
@@ -253,7 +251,6 @@ class MonthlySnapshotServiceImplTest {
                 .thenReturn(Optional.empty(), Optional.of(snapshot("2026-08", 31_000, 0, 0, 29_000)));
         when(goalService.list(USER_ID)).thenReturn(new GoalListResponse(List.of(
                 new GoalView(3L, "비상금", 300_000, 0, 0, 0.0, 0.0))));
-        when(goalRepository.findAllById(List.of())).thenReturn(List.of());
 
         MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
 
@@ -283,12 +280,6 @@ class MonthlySnapshotServiceImplTest {
         ReflectionTestUtils.setField(cluster, "evaluationStatus", status);
         ReflectionTestUtils.setField(cluster, "verdict", verdict);
         return cluster;
-    }
-
-    private static Goal goal(long id, int currentAmount) {
-        Goal goal = Goal.create(USER_ID, "목표", 1_000_000, currentAmount);
-        ReflectionTestUtils.setField(goal, "id", id);
-        return goal;
     }
 
     /** 엔티티에 생성 경로가 없다 — 행은 native insert가 만든다. 테스트만 리플렉션으로 채운다. */

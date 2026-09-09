@@ -4,7 +4,6 @@ import kr.sottaejap.server.common.enums.EvaluationStatus;
 import kr.sottaejap.server.common.enums.Satisfaction;
 import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.common.enums.Verdict;
-import kr.sottaejap.server.goal.domain.Goal;
 import kr.sottaejap.server.goal.repository.GoalRepository;
 import kr.sottaejap.server.goal.service.GoalService;
 import kr.sottaejap.server.report.domain.MonthlySnapshot;
@@ -33,7 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -131,6 +129,7 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
     /**
      * 확정 시 1회 배분 (E-94 ④). 대상은 ADOPTED 제안이 붙은 목표이고 가중치는 그 목표의 {@code adoptedSaving}
      * ({@code GET /goals}가 세는 값과 같은 것, E-83)이다. 삭제한 목표는 목록에 없으므로 배분에서도 빠진다.
+     * 갱신은 {@link GoalRepository#addCurrentAmount}로 DB에서 더한다 — 다른 달을 동시에 확정해도 앞의 배분이 남는다.
      */
     private List<GoalAllocation> allocate(long userId, Integer savedAmount) {
         if (savedAmount == null || savedAmount <= 0) {
@@ -141,10 +140,8 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
                 .map(goal -> new GoalSaving(goal.id(), goal.adoptedSaving()))
                 .toList();
         List<GoalAllocation> allocations = MonthlyDeltaRule.allocate(savedAmount, savings);
-        Map<Long, Goal> goals = goalRepository.findAllById(allocations.stream().map(GoalAllocation::goalId).toList()).stream()
-                .collect(Collectors.toMap(Goal::getId, Function.identity()));
         for (GoalAllocation allocation : allocations) {
-            goals.get(allocation.goalId()).addCurrentAmount(allocation.amount());
+            goalRepository.addCurrentAmount(allocation.goalId(), allocation.amount());
         }
         return allocations;
     }
