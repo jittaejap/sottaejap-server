@@ -26,8 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>AI에 보내는 것은 집계뿐이고 {@code pending}은 빼고 보낸다 (E-75). 판정이 없는 금액은 문장에 쓸 근거가
  * 아니어서, 애초에 건네지 않는 편이 프롬프트로 막는 것보다 확실하다 (NFR-02).
  *
- * <p>{@code fallback: true}는 AI가 LLM 없이 정적 문장을 돌려줬다는 뜻이다 (E-38). 그 문장은 집계를 보지 않으므로
- * 우리 템플릿을 쓴다 — 최소한 이 사용자의 카테고리와 금액은 맞다.
+ * <p>{@code fallback: true}는 AI가 <b>집계를 보지 않은 문장</b>을 돌려줬다는 뜻이다 — LLM 미설정 · 장애(E-38)이거나,
+ * LLM은 답했지만 숫자 가드레일이 근거 밖 수치를 잡아 버린 경우다 (ai PR #43 · E-79 · E-101). 어느 쪽이든 그 문장은
+ * 집계를 보지 않으므로 우리 템플릿을 쓴다 — 최소한 이 사용자의 카테고리와 금액은 맞다.
  *
  * <p><b>집계가 같으면 AI를 다시 부르지 않는다.</b> 집계는 결정론이고(E-18) 이 문장은 집계만 보고 만들므로
  * (E-75 · NFR-02), 같은 집계에서 다른 문장이 나올 이유가 없다. 캐시가 없으면 S15는 새로고침 · 탭 전환마다
@@ -56,11 +57,12 @@ public class HighlightServiceImpl implements HighlightService {
     /**
      * 캐시 키는 집계 그 자체다. {@link AnalysisSummary} 이하가 전부 record라 {@code equals}가 값 비교다.
      *
-     * <p><b>AI가 {@code task_context.state}만 보고 문장을 쓴다는 전제에 기댄다</b> (05 §3). 지금
-     * {@code ANALYSIS_NARRATE}에는 전용 핸들러가 없어 도구 호출 없이 state 한 번으로 생성하고,
-     * {@code recent_messages}도 비워 보내므로 AI 입력은 {@link #state}가 싣는 것이 전부다 — 이 키가 그것을
-     * 빠짐없이 덮는다. <b>ai가 이 작업에 도구(`/internal/ai/users/{id}/analysis`)를 쓰게 되면 그 응답에는 묶음
-     * 단위 {@code points}가 있어 집계가 같아도 문장 재료가 달라진다. 그때 이 키를 다시 봐야 한다.</b>
+     * <p><b>AI가 {@code task_context.state}만 보고 문장을 쓴다는 전제에 기댄다</b> (05 §3 · E-102, 01 v2.26 정정).
+     * {@code ANALYSIS_NARRATE}에는 전용 핸들러가 있지만(ai PR #43 {@code analysis_narrate.py}) 도구를 부르지 않고
+     * state 한 번으로 생성하며, {@code recent_messages}도 비워 보내므로 AI 입력은 {@link #state}가 싣는 것이
+     * 전부다 — 이 키가 그것을 빠짐없이 덮는다. <b>ai가 그 핸들러에 도구(`/internal/ai/users/{id}/analysis`)를
+     * 붙이면 그 응답에는 묶음 단위 {@code points}가 있어 집계가 같아도 문장 재료가 달라진다. 그때 이 키를 다시
+     * 봐야 한다.</b>
      *
      * <p>기준월이 {@code null}이어도 record라 그냥 같다고 나오지만, 실제로 그 값이 여기까지 오지는 않는다 —
      * 기준월이 없으면 거래가 0건이고, 그러면 묶음도 없어 {@code AnalysisServiceImpl}의 가드(E-75)가 먼저
@@ -87,7 +89,8 @@ public class HighlightServiceImpl implements HighlightService {
                             state(analysisYearMonth, summary)),
                     List.of()));
             String reply = response.reply() == null ? "" : response.reply().strip();
-            // 폴백 · 빈 문장은 집계를 보지 않은 문장이라 캐시하지 않는다 — AI가 돌아오면 다시 부른다 (E-38).
+            // 폴백 · 빈 문장은 집계를 보지 않은 문장이라 캐시하지 않는다 — LLM이 돌아오거나 가드레일을 통과하면
+            // 그때 캐시된다 (E-38 · ai PR #43). 가드레일 폴백은 일시 장애가 아니라 반복될 수 있다 — 이슈 #49.
             if (reply.isBlank() || response.isFallback()) {
                 return HighlightTemplate.highlightFor(summary);
             }
