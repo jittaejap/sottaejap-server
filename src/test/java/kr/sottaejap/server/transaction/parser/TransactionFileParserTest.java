@@ -358,6 +358,44 @@ class TransactionFileParserTest {
         assertThrows(TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
     }
 
+    /**
+     * 이슈 #58 — XLSX는 시트를 <b>열기 전에</b> 센다. 열고 나서 세면 상한을 넘긴 파일이
+     * {@code OutOfMemoryError}로 500이 된다 (운영 힙에서 200,000행 · 3.2MB xlsx 실측).
+     *
+     * <p>픽스처는 <b>어느 장도 혼자서는 상한을 넘지 않지만 합치면 넘는</b> 두 장짜리 파일이다.
+     * 워크북을 연 뒤 세는 종전 경로는 첫 장만 보므로 이 파일을 통과시킨다 — 그러니 여기서 거절이
+     * 나온다는 것은 열기 전에 <b>워크북 전체</b>를 셌다는 뜻이다. {@code XSSFWorkbook}이 모든 장을
+     * 객체 모델로 올리는 이상 메모리를 정하는 것은 첫 장이 아니라 전체 행수다.
+     */
+    @Test
+    void XLSX는_시트를_열기_전에_워크북_전체_행수로_거절한다() {
+        int perSheet = TransactionFileParser.MAX_ROWS / 2 + 100;
+        byte[] file = twoSheetWorkbook(perSheet);
+
+        assertThrows(TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
+    }
+
+    /** 장마다 {@code rows}행씩 든 두 장짜리 워크북. 머리글은 첫 장에만 둔다 — 내역은 첫 장이다. */
+    private static byte[] twoSheetWorkbook(int rows) {
+        try (Workbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+            for (String name : List.of("이용내역", "안내")) {
+                Sheet sheet = workbook.createSheet(name);
+                header(sheet, 0, "거래일시", "가맹점명", "금액");
+                for (int i = 1; i <= rows; i++) {
+                    Row row = sheet.createRow(i);
+                    row.createCell(0).setCellValue("2026-08-25 20:22");
+                    row.createCell(1).setCellValue("○○마트");
+                    row.createCell(2).setCellValue(12000);
+                }
+            }
+            workbook.write(bytes);
+            return bytes.toByteArray();
+        } catch (IOException cannotWrite) {
+            throw new UncheckedIOException(cannotWrite);
+        }
+    }
+
     private static String csvRows(int rows) {
         StringBuilder csv = new StringBuilder("거래일시,가맹점명,금액\n");
         for (int i = 0; i < rows; i++) {

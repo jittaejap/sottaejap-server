@@ -2,16 +2,20 @@ package kr.sottaejap.server.transaction.parser;
 
 import kr.sottaejap.server.common.enums.TimeSlot;
 import kr.sottaejap.server.transaction.dto.TransactionUploadResponse.SkippedRow;
+import org.apache.poi.openxml4j.exceptions.OpenXML4JException;
+import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DateUtil;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.eventusermodel.XSSFReader;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
@@ -24,6 +28,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,6 +45,8 @@ import java.util.stream.Stream;
  *
  * <p>머리글 아래 행이 {@link #MAX_ROWS}를 넘는 파일은 행을 해석하기 전에 {@link TooManyRowsException}으로 거절한다
  * (05 §2 · 06 R28). client의 20초 타임아웃이 서버보다 먼저 끊기면 저장은 됐는데 화면만 실패로 보인다.
+ * XLSX는 한 걸음 더 앞이다 — 시트를 <b>열기 전에</b> 압축 안에서 행을 세고 거절한다 ({@link #countSheetRows}).
+ * 열고 나서 세면 상한을 넘긴 파일이 {@code OutOfMemoryError}로 500이 된다 (이슈 #58).
  */
 @Component
 public class TransactionFileParser {
@@ -55,6 +62,17 @@ public class TransactionFileParser {
      * client 20초 타임아웃 안에 넉넉히 든다. 합계·여백 행도 센다 — 파일이 실제로 가진 줄 수이고, 세기 전에 해석하지 않는다.
      */
     public static final int MAX_ROWS = 20_000;
+
+    /**
+     * XLSX를 열기 전에 거는 <b>물리적</b> 행 상한. 머리글은 앞 {@link #HEADER_SEARCH_LIMIT}줄 안에서만 찾으므로,
+     * 한 장짜리 파일에서 물리적 행이 이 값을 넘으면 머리글이 어디에 있든 그 아래 행은 반드시
+     * {@link #MAX_ROWS}를 넘는다 — 지금 통과하던 파일이 새로 거절되지 않는다. 이 값 이하는 종전대로
+     * 워크북을 열어 정확히 센다.
+     */
+    private static final int MAX_SHEET_ROWS = MAX_ROWS + HEADER_SEARCH_LIMIT;
+
+    /** {@code <row}까지만 맞추고 다음 글자로 {@code <rowBreaks>} 같은 다른 태그를 가른다. */
+    private static final byte[] ROW_TAG = "<row".getBytes(StandardCharsets.US_ASCII);
 
     /** 앞에 오는 키워드를 먼저 맞춘다 — 짧은 것을 뒤에 둬야 "거래일시"가 "거래일"보다 우선한다. */
     private static final List<String> DATE_TIME_KEYWORDS =
@@ -142,10 +160,25 @@ public class TransactionFileParser {
     private static final DateTimeFormatter TIME_ONLY_CELL = DateTimeFormatter.ofPattern("H:m:s");
     private static final Pattern NUMBER = Pattern.compile("-?\\d+");
 
-    /** 머리글 아래 행이 {@link #MAX_ROWS}를 넘는다. 호출자가 {@code TOO_MANY_ROWS}로 바꾼다. */
+    /** 행이 {@link #MAX_ROWS}를 넘는다. 호출자가 {@code TOO_MANY_ROWS}로 바꾼다. */
     public static final class TooManyRowsException extends RuntimeException {
-        public TooManyRowsException(int rows) {
-            super("머리글 아래 행이 " + rows + "행으로 상한 " + MAX_ROWS + "행을 넘습니다.");
+
+        private TooManyRowsException(String rows) {
+            super("행이 " + rows + " 상한 " + MAX_ROWS + "행을 넘습니다.");
+        }
+
+        /** 머리글 아래 행을 끝까지 센 뒤. CSV와 XLSX 본해석이 쓴다. */
+        public static TooManyRowsException counted(int rows) {
+            return new TooManyRowsException(rows + "행으로");
+        }
+
+        /**
+         * 세다 멈춘 뒤. XLSX 선계수({@link #countSheetRows})는 상한을 넘긴 순간 읽기를 그만두므로
+         * 실제 행수를 모른다 — 20만 행 파일도 "20,033행"으로 멈춘다. 그 숫자를 확정값처럼 적으면
+         * 로그를 보는 사람이 파일 크기를 잘못 읽는다.
+         */
+        private static TooManyRowsException atLeast(int rows) {
+            return new TooManyRowsException(rows + "행 이상이라");
         }
     }
 
@@ -220,7 +253,7 @@ public class TransactionFileParser {
         }
         int rowCount = records.size() - headerIndex - 1;
         if (rowCount > MAX_ROWS) {
-            throw new TooManyRowsException(rowCount);
+            throw TooManyRowsException.counted(rowCount);
         }
 
         List<String> headers = records.get(headerIndex).cells();
@@ -417,6 +450,13 @@ public class TransactionFileParser {
      * 서식대로 읽으면 제각기 다르게 파싱된다.
      */
     private static List<RawRow> readSheet(byte[] content) {
+        // 여는 것보다 세는 것이 먼저다. XSSFWorkbook은 시트를 통째로 객체 모델로 올리므로 20만 행이면
+        // 1GB 힙도 모자라고, 그때 나는 OutOfMemoryError는 Error라 아래 catch에 걸리지 않아 400이 아니라
+        // 500이 된다 (이슈 #58). 운영은 한 대에 db·server·ai가 같이 뜨는 2GiB급이라 힙을 키워 막을 수 없다 (07 §12).
+        int sheetRows = countSheetRows(content);
+        if (sheetRows > MAX_SHEET_ROWS) {
+            throw TooManyRowsException.atLeast(sheetRows);
+        }
         try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(content))) {
             List<RawRow> records = new ArrayList<>();
             // 물리적 줄 번호를 CSV와 맞춘다 — 사용자가 건너뛴 행을 엑셀에서 찾을 때 보는 행 번호다.
@@ -428,6 +468,69 @@ public class TransactionFileParser {
             // POI는 형식이 어긋나면 자기 런타임 예외를 던진다. 호출자가 PARSE_FAILED로 바꾸도록 맞춰 준다.
             throw new IllegalArgumentException("XLSX 파일을 열지 못했습니다.", cannotOpen);
         }
+    }
+
+    /**
+     * 워크시트 XML을 흘려보내며 {@code <row>} 여는 태그를 센다. 시트를 객체로 만들지 않아 200,000행짜리
+     * 파일도 메모리는 버퍼 하나다 (실측 — 힙 128MB에서 0.1초).
+     *
+     * <p>zip을 직접 열지 않고 {@link XSSFReader}를 쓴다. POI가 쓴 xlsx는 로컬 헤더에 크기를 적지 않아
+     * JDK {@code ZipInputStream}이 {@code invalid entry size}로 죽고, 그러면 이 메서드가 조용히 0을
+     * 돌려줘 상한이 통째로 꺼진다 — 실제로 그렇게 만들었다가 실측에서 잡았다. 시트 순서와 경로도
+     * 이름 규칙이 아니라 워크북 관계로 찾는 것이 맞다.
+     *
+     * <p><b>시트가 여럿이면 모두 더한다.</b> {@link #readSheet}는 첫 장만 쓰지만 {@code XSSFWorkbook}은
+     * <b>모든 장</b>을 객체 모델로 올리므로, 메모리를 정하는 것은 워크북 전체 행수다. 첫 장만 세면
+     * 뒷장에 20만 행을 숨긴 파일이 그대로 OOM으로 간다. 카드사 내려받기 파일은 내역이 첫 장이고
+     * 나머지는 안내·약관이라 실무상 걸리지 않는다.
+     *
+     * <p>상한을 넘으면 그 자리에서 멈춘다 — 10MB zip이 GB로 풀리는 파일을 끝까지 훑지 않는다.
+     *
+     * <p>열 수 없는 바이트는 0을 돌려주고 판정을 {@code XSSFWorkbook}에 맡긴다. 여기서 형식 오류를
+     * 흉내 내면 CSV를 {@code .xlsx}로 올렸을 때의 메시지가 바뀐다.
+     */
+    private static int countSheetRows(byte[] content) {
+        int rows = 0;
+        try (OPCPackage xlsx = OPCPackage.open(new ByteArrayInputStream(content))) {
+            Iterator<InputStream> sheets = new XSSFReader(xlsx).getSheetsData();
+            while (rows <= MAX_SHEET_ROWS && sheets.hasNext()) {
+                try (InputStream sheet = sheets.next()) {
+                    rows += countRowTags(sheet, MAX_SHEET_ROWS - rows);
+                }
+            }
+        } catch (IOException | OpenXML4JException | RuntimeException cannotOpen) {
+            return 0;
+        }
+        return rows;
+    }
+
+    /**
+     * XML을 파싱하지 않고 바이트로 센다. 텍스트 안의 {@code <}는 {@code &lt;}로 이스케이프되므로
+     * 바이트로 나타난 {@code <row}는 언제나 여는 태그다.
+     *
+     * @param limit 이 수를 넘으면 더 읽지 않는다. 넘겼다는 것만 알면 되고 정확한 값은 쓰이지 않는다.
+     */
+    private static int countRowTags(InputStream sheetXml, int limit) throws IOException {
+        byte[] buffer = new byte[8192];
+        int rows = 0;
+        int matched = 0;
+        for (int read; rows <= limit && (read = sheetXml.read(buffer)) > 0; ) {
+            for (int i = 0; i < read; i++) {
+                byte b = buffer[i];
+                if (matched == ROW_TAG.length) {
+                    if (b == ' ' || b == '>' || b == '/') {
+                        rows++;
+                    }
+                    matched = b == '<' ? 1 : 0;
+                } else if (b == ROW_TAG[matched]) {
+                    matched++;
+                } else {
+                    // 어긋난 자리가 다시 '<'면 거기서부터 새로 맞춘다 — `<<row>`도 놓치지 않는다.
+                    matched = b == '<' ? 1 : 0;
+                }
+            }
+        }
+        return rows;
     }
 
     private static List<String> cellsOf(Row row) {
