@@ -74,6 +74,7 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
   `expectedSaving` 비율로 배분합니다. 그 이전 달은 확정만 하고 실적을 올리지 않습니다. 채택(`adopt`)은 여전히 실적을 바꾸지 않습니다 (E-82).
   확정과 배분은 한 트랜잭션이고, 같은 달의 동시 첫 조회는 `MonthlySnapshotRepository.insertIfAbsent`(`ON CONFLICT DO NOTHING`)가, 다른 달의 동시 확정은
   `GoalRepository.addCurrentAmount`(DB에서 원자적으로 더함)가 가릅니다 — 엔티티를 읽어 더하고 쓰면 앞의 배분이 증발합니다.
+  `Goal`은 `@DynamicUpdate`라 바뀐 컬럼만 씁니다 (E-100) — `PUT /goals/{id}`가 `currentAmount`를 생략하면 SQL에 그 컬럼이 없어 배분과 겹쳐도 덮지 않습니다. 지우면 이슈 #36이 되살아납니다.
 - **확정된 달은 전월 값도 굳어 있습니다.** `previousTotalSpending`은 저장된 `savedAmount`에서 역산하고 `previousRepeatCount`는 전월 스냅샷 값 또는 null입니다.
   확정된 달을 조회할 때 거래 · 회고 · 묶음을 읽지 않습니다. 첫 거래월 이전 달은 저장하지 않습니다.
 - 산식(`totalSpending` · `savedAmount` · `unsatisfiedCount` · `repeatCount` · 배분)은 `rules/report/MonthlyDeltaRule`입니다. 현재 연월은 서비스가 `Clock`으로 넘깁니다.
