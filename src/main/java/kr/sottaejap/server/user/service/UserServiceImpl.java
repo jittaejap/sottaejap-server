@@ -35,6 +35,9 @@ public class UserServiceImpl implements UserService {
     /**
      * 예산이 바뀌면 <b>묶음을 다시 계산한다</b> (E-77 · FR-06-06). {@code burdenRatio}·{@code quadrant}는 재계산이
      * 묶음 행에 써 둔 값이라, 예산만 고치면 지도의 가로축과 처방·CTA가 옛 예산 기준으로 남는다.
+     *
+     * <p><b>{@code outlierBaseAmount}는 재계산을 부르지 않는다</b> (E-115). 후보는 조회 시점에 계산하므로(E-62)
+     * 묶음 행에 굳은 값이 없다 — 다음 {@code GET /retrospects/candidates}부터 새 기준이 적용된다.
      */
     @Override
     @Transactional
@@ -44,7 +47,8 @@ public class UserServiceImpl implements UserService {
 
         boolean budgetChanged = request.monthlyBudget() != null
                 && !Objects.equals(user.getMonthlyBudget(), request.monthlyBudget());
-        user.updateSettings(request.monthlyBudget(), request.outlierThreshold(), request.retrospectDelayDays());
+        user.updateSettings(request.monthlyBudget(), request.outlierThreshold(),
+                request.outlierBaseAmount(), request.retrospectDelayDays());
         if (budgetChanged) {
             clusterRecomputeService.recomputeAll(userId);
         }

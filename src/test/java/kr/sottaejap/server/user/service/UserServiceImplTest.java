@@ -57,7 +57,7 @@ class UserServiceImplTest {
         when(transactionService.analysisYearMonth(USER_ID)).thenReturn(YearMonth.of(2026, 8));
 
         UserMeResponse response = service.updateSettings(USER_ID,
-                new UserSettingsRequest(2_500_000, null, null));
+                new UserSettingsRequest(2_500_000, null, null, null));
 
         assertEquals(2_500_000, response.monthlyBudget());
         assertEquals("2026-08", response.analysisYearMonth());
@@ -68,7 +68,7 @@ class UserServiceImplTest {
     void 예산이_그대로면_다시_계산하지_않는다() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
-        service.updateSettings(USER_ID, new UserSettingsRequest(1_000_000, 2.0, 3));
+        service.updateSettings(USER_ID, new UserSettingsRequest(1_000_000, 2.0, null, 3));
 
         assertEquals(2.0, user.getOutlierThreshold());
         assertEquals(3, user.getRetrospectDelayDays());
@@ -79,7 +79,7 @@ class UserServiceImplTest {
     void null은_그대로_두기다() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
-        service.updateSettings(USER_ID, new UserSettingsRequest(null, null, 5));
+        service.updateSettings(USER_ID, new UserSettingsRequest(null, null, null, 5));
 
         assertEquals(1_000_000, user.getMonthlyBudget());
         assertEquals(5, user.getRetrospectDelayDays());
@@ -87,11 +87,35 @@ class UserServiceImplTest {
     }
 
     @Test
+    void 기준_금액을_저장하면_응답에_실리고_재계산하지_않는다() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        UserMeResponse response = service.updateSettings(USER_ID,
+                new UserSettingsRequest(null, null, 150_000, null));
+
+        assertEquals(150_000, response.outlierBaseAmount());
+        assertEquals(150_000, user.getOutlierBaseAmount());
+        verify(clusterRecomputeService, never()).recomputeAll(USER_ID);
+    }
+
+    @Test
+    void 기준_금액을_생략하면_유지한다() {
+        ReflectionTestUtils.setField(user, "outlierBaseAmount", 150_000);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        // 마이페이지가 민감도 프리셋만 바꿔 보내는 경우 — 온보딩에서 정한 금액이 남아야 한다 (E-115).
+        service.updateSettings(USER_ID, new UserSettingsRequest(null, 2.0, null, null));
+
+        assertEquals(150_000, user.getOutlierBaseAmount());
+        assertEquals(2.0, user.getOutlierThreshold());
+    }
+
+    @Test
     void 없는_사용자는_404다() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.updateSettings(USER_ID, new UserSettingsRequest(2_500_000, null, null)));
+                () -> service.updateSettings(USER_ID, new UserSettingsRequest(2_500_000, null, null, null)));
         assertEquals(CommonErrorCode.NOT_FOUND, exception.getErrorCode());
     }
 }

@@ -69,6 +69,25 @@ class UserSchemaTest {
     }
 
     @Test
+    void 기준_금액_컬럼에_읽고_쓸_수_있다() {
+        // V11 — 기본값은 null이고 백필하지 않는다 (E-115).
+        insertKakaoUser(null, "kakao-base-amount", "기준금액");
+        entityManager.clear();
+
+        User user = userRepository
+                .findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-base-amount").orElseThrow();
+        assertNull(user.getOutlierBaseAmount());
+
+        user.updateSettings(null, null, 150_000, null);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertEquals(150_000, userRepository
+                .findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-base-amount").orElseThrow()
+                .getOutlierBaseAmount());
+    }
+
+    @Test
     void 데모_계정은_표시_이름을_가진다() {
         User demo = userRepository.findByEmailAndAuthProvider("demo@sottaejap.kr", AuthProvider.LOCAL).orElseThrow();
 

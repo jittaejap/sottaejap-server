@@ -84,7 +84,7 @@ class DynamicUpdateRaceIntegrationTest {
             User alreadyRead = userRepository.findById(userId).orElseThrow();
             committedInBetween.executeWithoutResult(inner ->
                     userRepository.findById(userId).orElseThrow().updateAvgSatisfaction(0.75));
-            alreadyRead.updateSettings(null, 2.5, null);
+            alreadyRead.updateSettings(null, 2.5, null, null);
         });
 
         User stored = userRepository.findById(userId).orElseThrow();
