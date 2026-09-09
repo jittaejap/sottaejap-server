@@ -22,6 +22,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
@@ -145,6 +146,18 @@ class TransactionServiceImplTest {
     @Test
     void from이_to보다_뒤이면_400이다() {
         assertInvalid(query(LocalDate.of(2026, 8, 31), LocalDate.of(2026, 8, 1), null, null, 0, 20));
+    }
+
+    /** 05 §2 행수 상한 — 파서의 신호를 400 TOO_MANY_ROWS로 바꾸고, 저장소는 건드리지 않는다 (06 R28). */
+    @Test
+    void 행수_상한을_넘긴_파일은_400_TOO_MANY_ROWS이고_한_건도_저장하지_않는다() {
+        when(parser.parseCsv(any())).thenThrow(new TransactionFileParser.TooManyRowsException(TransactionFileParser.MAX_ROWS + 1));
+        MockMultipartFile file = new MockMultipartFile("file", "big.csv", "text/csv", "거래일시,가맹점명,금액\n".getBytes());
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> transactionService.upload(USER_ID, file));
+
+        assertEquals(CommonErrorCode.TOO_MANY_ROWS, exception.getErrorCode());
+        verifyNoInteractions(transactionRepository);
     }
 
     @Test

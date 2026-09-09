@@ -37,6 +37,9 @@ import java.util.stream.Stream;
  * 카테고리는 있으면 원본을 담고 없으면 비운다 — 3사 통합 매핑표가 나오기 전에는 지어내지 않는다.
  *
  * <p>계산·판정은 하지 않는다. 시간대 분류만 {@code TimeSlot.from}에 맡긴다.
+ *
+ * <p>머리글 아래 행이 {@link #MAX_ROWS}를 넘는 파일은 행을 해석하기 전에 {@link TooManyRowsException}으로 거절한다
+ * (05 §2 · 06 R28). client의 20초 타임아웃이 서버보다 먼저 끊기면 저장은 됐는데 화면만 실패로 보인다.
  */
 @Component
 public class TransactionFileParser {
@@ -46,6 +49,12 @@ public class TransactionFileParser {
 
     /** 머리글 앞에 제목·조회조건 줄이 붙는 내보내기가 많다. 앞쪽 몇 줄 안에서 머리글을 찾는다. */
     private static final int HEADER_SEARCH_LIMIT = 30;
+
+    /**
+     * 머리글 아래 행 수 상한 (05 §2). 실측 약 3,500행/초라 20,000행이 약 6초다 — NFR-03(3개월분 약 1,000건)의 20배이고
+     * client 20초 타임아웃 안에 넉넉히 든다. 합계·여백 행도 센다 — 파일이 실제로 가진 줄 수이고, 세기 전에 해석하지 않는다.
+     */
+    public static final int MAX_ROWS = 20_000;
 
     /** 앞에 오는 키워드를 먼저 맞춘다 — 짧은 것을 뒤에 둬야 "거래일시"가 "거래일"보다 우선한다. */
     private static final List<String> DATE_TIME_KEYWORDS =
@@ -133,6 +142,13 @@ public class TransactionFileParser {
     private static final DateTimeFormatter TIME_ONLY_CELL = DateTimeFormatter.ofPattern("H:m:s");
     private static final Pattern NUMBER = Pattern.compile("-?\\d+");
 
+    /** 머리글 아래 행이 {@link #MAX_ROWS}를 넘는다. 호출자가 {@code TOO_MANY_ROWS}로 바꾼다. */
+    public static final class TooManyRowsException extends RuntimeException {
+        public TooManyRowsException(int rows) {
+            super("머리글 아래 행이 " + rows + "행으로 상한 " + MAX_ROWS + "행을 넘습니다.");
+        }
+    }
+
     /**
      * 파싱 결과. 저장 가능한 행과 건너뛴 행을 분리해 돌려준다.
      */
@@ -201,6 +217,10 @@ public class TransactionFileParser {
         int headerIndex = findHeaderIndex(records);
         if (headerIndex < 0) {
             throw new IllegalArgumentException("거래일시·금액 컬럼이 있는 머리글을 찾지 못했습니다.");
+        }
+        int rowCount = records.size() - headerIndex - 1;
+        if (rowCount > MAX_ROWS) {
+            throw new TooManyRowsException(rowCount);
         }
 
         List<String> headers = records.get(headerIndex).cells();

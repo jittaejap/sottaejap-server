@@ -161,6 +161,9 @@ public class TransactionServiceImpl implements TransactionService {
         try {
             byte[] content = file.getBytes();
             return xlsx ? parser.parseXlsx(content) : parser.parseCsv(content);
+        } catch (TransactionFileParser.TooManyRowsException tooManyRows) {
+            // 05 §2 행수 상한 — 한 건도 저장하지 않는다. 파싱 실패(422)와 구분해 400으로 알린다 (06 R28).
+            throw new BusinessException(CommonErrorCode.TOO_MANY_ROWS);
         } catch (IOException | IllegalArgumentException cannotRead) {
             throw new BusinessException(CommonErrorCode.PARSE_FAILED);
         }
