@@ -33,7 +33,12 @@ class CandidateRuleTest {
 
     private static CandidateInput input(int amount, List<Integer> sameSlot, List<Integer> sameCategory,
                                         Double multiplier, Integer monthlyBudget, int lowCount) {
-        return new CandidateInput(amount, sameSlot, sameCategory, multiplier, monthlyBudget, lowCount);
+        return input(amount, sameSlot, sameCategory, multiplier, monthlyBudget, null, lowCount);
+    }
+
+    private static CandidateInput input(int amount, List<Integer> sameSlot, List<Integer> sameCategory,
+                                        Double multiplier, Integer monthlyBudget, Integer baseAmount, int lowCount) {
+        return new CandidateInput(amount, sameSlot, sameCategory, multiplier, monthlyBudget, baseAmount, lowCount);
     }
 
     @Test
@@ -64,6 +69,32 @@ class CandidateRuleTest {
     void 예산이_0이면_THRESHOLD를_적용하지_않는다() {
         CandidateInput input = input(120_000, NO_BASELINE, NO_BASELINE, STANDARD_MULTIPLIER, 0, 0);
         assertEquals(Optional.empty(), CandidateRule.evaluate(input, params()));
+    }
+
+    @Test
+    void 기준_금액이_있으면_예산_비율보다_먼저_본다() {
+        // 예산 비율은 10만 원이지만 사용자가 15만 원을 적었다 — 12만 원은 후보가 아니다 (E-115).
+        CandidateInput input = input(120_000, NO_BASELINE, NO_BASELINE, STANDARD_MULTIPLIER, 1_000_000, 150_000, 0);
+        assertEquals(Optional.empty(), CandidateRule.evaluate(input, params()));
+    }
+
+    @Test
+    void 기준_금액과_같으면_THRESHOLD_EXCEEDED다() {
+        CandidateInput input = input(150_000, NO_BASELINE, NO_BASELINE, STANDARD_MULTIPLIER, 1_000_000, 150_000, 0);
+        assertEquals(Optional.of(ReasonCode.THRESHOLD_EXCEEDED), CandidateRule.evaluate(input, params()));
+    }
+
+    @Test
+    void 예산이_없어도_기준_금액이_있으면_판정한다() {
+        CandidateInput input = input(150_000, NO_BASELINE, NO_BASELINE, STANDARD_MULTIPLIER, null, 150_000, 0);
+        assertEquals(Optional.of(ReasonCode.THRESHOLD_EXCEEDED), CandidateRule.evaluate(input, params()));
+    }
+
+    @Test
+    void 기준_금액이_0이면_예산_비율로_돌아간다() {
+        // 0을 그대로 쓰면 모든 거래가 후보가 된다 — DTO가 막지만 규칙도 스스로 지킨다 (E-18).
+        CandidateInput input = input(120_000, NO_BASELINE, NO_BASELINE, STANDARD_MULTIPLIER, 1_000_000, 0, 0);
+        assertEquals(Optional.of(ReasonCode.THRESHOLD_EXCEEDED), CandidateRule.evaluate(input, params()));
     }
 
     @Test

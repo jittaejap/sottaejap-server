@@ -50,18 +50,46 @@ class UserControllerTest {
     void 설정을_바꾸면_갱신된_내_정보를_돌려준다() throws Exception {
         when(userService.updateSettings(eq(USER_ID), any())).thenReturn(new UserMeResponse(
                 1L, "demo@sottaejap.kr", "데모 사용자", AuthProvider.LOCAL,
-                2_500_000, 2.0, 1, true, "2026-08"));
+                2_500_000, 2.0, 150_000, 1, true, "2026-08"));
 
         mockMvc.perform(put("/users/me/settings").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"monthlyBudget\":2500000,\"outlierThreshold\":2.0}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.monthlyBudget").value(2_500_000));
+                .andExpect(jsonPath("$.data.monthlyBudget").value(2_500_000))
+                .andExpect(jsonPath("$.data.outlierBaseAmount").value(150_000));
 
         ArgumentCaptor<UserSettingsRequest> captor = ArgumentCaptor.forClass(UserSettingsRequest.class);
         verify(userService).updateSettings(eq(USER_ID), captor.capture());
         assertEquals(2_500_000, captor.getValue().monthlyBudget());
         assertNull(captor.getValue().retrospectDelayDays());
+    }
+
+    @Test
+    void 기준_금액만_보내도_서비스까지_실린다() throws Exception {
+        when(userService.updateSettings(eq(USER_ID), any())).thenReturn(new UserMeResponse(
+                1L, "demo@sottaejap.kr", "데모 사용자", AuthProvider.LOCAL,
+                2_500_000, 2.0, 150_000, 1, true, "2026-08"));
+
+        mockMvc.perform(put("/users/me/settings").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outlierBaseAmount\":150000}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.outlierBaseAmount").value(150_000));
+
+        ArgumentCaptor<UserSettingsRequest> captor = ArgumentCaptor.forClass(UserSettingsRequest.class);
+        verify(userService).updateSettings(eq(USER_ID), captor.capture());
+        assertEquals(150_000, captor.getValue().outlierBaseAmount());
+        assertNull(captor.getValue().monthlyBudget());
+    }
+
+    @Test
+    void 기준_금액이_0_이하면_400이다() throws Exception {
+        mockMvc.perform(put("/users/me/settings").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outlierBaseAmount\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+
+        verifyNoInteractions(userService);
     }
 
     @Test

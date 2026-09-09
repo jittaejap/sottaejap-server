@@ -36,8 +36,19 @@ public final class CandidateRule {
         return Optional.empty();
     }
 
-    /** ③ 예산이 없거나 0이면 미적용. 있으면 `amount ≥ monthlyBudget × big-amount-budget-ratio`. */
+    /**
+     * ③ 사용자가 정한 기준 금액이 있으면 `amount ≥ outlierBaseAmount`, 없으면 `amount ≥ monthlyBudget × big-amount-budget-ratio`다 (E-115).
+     * 둘 다 없으면 미적용이다.
+     *
+     * <p>사용자가 직접 적은 금액이 잠정 파라미터(E-57 `0.1`)보다 세다. <b>예산이 없어도 기준 금액이 있으면 판정이 열린다.</b>
+     * 0 이하는 폴백으로 되돌린다 — 모든 거래가 후보가 되어 목록이 무의미해진다. DTO가 `@Positive`로 막지만
+     * 규칙 엔진은 입력값만 보고 스스로 지킨다 (E-18).
+     */
     private static boolean exceedsBudgetThreshold(CandidateInput input, RuleParams.Candidate candidate) {
+        Integer baseAmount = input.outlierBaseAmount();
+        if (baseAmount != null && baseAmount > 0) {
+            return input.amount() >= baseAmount;
+        }
         Integer monthlyBudget = input.monthlyBudget();
         if (monthlyBudget == null || monthlyBudget == 0) {
             return false;

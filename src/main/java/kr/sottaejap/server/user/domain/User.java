@@ -55,6 +55,14 @@ public class User {
     @Column(name = "outlier_threshold")
     private Double outlierThreshold;
 
+    /**
+     * 큰 금액 후보 판정의 기준 금액, 원 단위 (E-115 · V11). {@code outlierThreshold}(이상치 배수 · E-46)와 다른 값이다 —
+     * 배수는 규칙 ④ {@code TIMESLOT_OUTLIER}, 이 금액은 규칙 ③ {@code THRESHOLD_EXCEEDED}에 쓴다.
+     * null이면 규칙 엔진이 예산 비율로 돌아간다.
+     */
+    @Column(name = "outlier_base_amount")
+    private Integer outlierBaseAmount;
+
     /** 전체 평균 — 축소 추정용 캐시 (B-3). */
     @Column(name = "avg_satisfaction")
     private Double avgSatisfaction;
@@ -90,13 +98,20 @@ public class User {
     /**
      * 온보딩 2단계 · 마이페이지의 설정 변경 (FR-01-03,04,06). null은 "그대로 두기"다 —
      * 예산은 필수 값이라(03 W-9) 한 번 정한 뒤 비우는 경로를 두지 않는다.
+     *
+     * <p>{@code outlierBaseAmount}도 같다 (E-115). 마이페이지가 민감도 프리셋만 바꿔 보낼 때 생략을 "지움"으로 읽으면
+     * 온보딩에서 정한 기준 금액이 사라진다 — E-100 · #36과 같은 계열의 덮어쓰기다.
      */
-    public void updateSettings(Integer monthlyBudget, Double outlierThreshold, Integer retrospectDelayDays) {
+    public void updateSettings(Integer monthlyBudget, Double outlierThreshold, Integer outlierBaseAmount,
+                               Integer retrospectDelayDays) {
         if (monthlyBudget != null) {
             this.monthlyBudget = monthlyBudget;
         }
         if (outlierThreshold != null) {
             this.outlierThreshold = outlierThreshold;
+        }
+        if (outlierBaseAmount != null) {
+            this.outlierBaseAmount = outlierBaseAmount;
         }
         if (retrospectDelayDays != null) {
             this.retrospectDelayDays = retrospectDelayDays;

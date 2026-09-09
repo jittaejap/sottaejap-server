@@ -129,6 +129,7 @@ public class CandidateServiceImpl implements CandidateService {
                 amountsExcept(baseline.byCategory().get(category), transaction.getId()),
                 multiplier(baseline.user()),
                 baseline.user().getMonthlyBudget(),
+                baseline.user().getOutlierBaseAmount(),
                 baseline.lowCounts().getOrDefault(parentKeyOf(transaction), 0));
     }
 
