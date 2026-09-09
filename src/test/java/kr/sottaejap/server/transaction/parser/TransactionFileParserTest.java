@@ -330,6 +330,42 @@ class TransactionFileParserTest {
                 () -> parser.parseXlsx(utf8("거래일시,가맹점명,금액\n2026-08-25 20:22,○○마트,12000\n")));
     }
 
+    /** 05 §2 행수 상한 — 상한까지는 그대로 읽고, 한 행이라도 넘으면 해석 전에 거절한다 (06 R28). */
+    @Test
+    void 머리글_아래_행이_상한을_넘으면_해석하지_않고_거절한다() {
+        assertEquals(TransactionFileParser.MAX_ROWS, parser.parseCsv(utf8(csvRows(TransactionFileParser.MAX_ROWS))).rows().size());
+
+        assertThrows(TransactionFileParser.TooManyRowsException.class,
+                () -> parser.parseCsv(utf8(csvRows(TransactionFileParser.MAX_ROWS + 1))));
+    }
+
+    /** XLSX도 같은 지점에서 센다 — 형식마다 상한이 다르면 같은 내역을 CSV로 냈을 때와 결과가 갈린다. */
+    @Test
+    void XLSX도_같은_상한으로_거절한다() {
+        byte[] file = workbook(sheet -> {
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("거래일시");
+            header.createCell(1).setCellValue("가맹점명");
+            header.createCell(2).setCellValue("금액");
+            for (int i = 1; i <= TransactionFileParser.MAX_ROWS + 1; i++) {
+                Row row = sheet.createRow(i);
+                row.createCell(0).setCellValue("2026-08-25 20:22");
+                row.createCell(1).setCellValue("○○마트");
+                row.createCell(2).setCellValue(12000);
+            }
+        });
+
+        assertThrows(TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
+    }
+
+    private static String csvRows(int rows) {
+        StringBuilder csv = new StringBuilder("거래일시,가맹점명,금액\n");
+        for (int i = 0; i < rows; i++) {
+            csv.append("2026-08-25 20:22,○○마트,12000\n");
+        }
+        return csv.toString();
+    }
+
     private static byte[] utf8(String csv) {
         return csv.getBytes(StandardCharsets.UTF_8);
     }

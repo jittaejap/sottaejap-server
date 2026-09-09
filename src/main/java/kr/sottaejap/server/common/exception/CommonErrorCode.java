@@ -13,6 +13,7 @@ public enum CommonErrorCode implements ErrorCode {
 
     INVALID_FILE_FORMAT(HttpStatus.BAD_REQUEST, "INVALID_FILE_FORMAT", "지원하지 않는 파일 형식이에요."),
     PARSE_FAILED(HttpStatus.UNPROCESSABLE_CONTENT, "PARSE_FAILED", "거래내역을 읽지 못했어요."),
+    TOO_MANY_ROWS(HttpStatus.BAD_REQUEST, "TOO_MANY_ROWS", "거래내역이 너무 많아요. 20,000건 이하로 나눠서 올려 주세요."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "NOT_FOUND", "요청한 정보를 찾을 수 없어요."),
     DUPLICATE_RETROSPECT(HttpStatus.CONFLICT, "DUPLICATE_RETROSPECT", "이 거래는 이미 돌아봤어요."),
     ONBOARDING_REQUIRED(HttpStatus.PRECONDITION_REQUIRED, "ONBOARDING_REQUIRED", "온보딩을 먼저 마쳐 주세요."),
