@@ -42,6 +42,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     /** analysisYearMonth = 최근 거래월 (E-60). */
     Optional<Transaction> findTopByUserIdOrderByOccurredAtDesc(long userId);
 
+    /** 월간 리포트의 하한 — 첫 거래월 이전 달은 스냅샷을 만들지 않는다 (E-94). */
+    Optional<Transaction> findTopByUserIdOrderByOccurredAtAsc(long userId);
+
     /**
      * 회고 후보 ⓪ — 이미 회고된 거래를 빼고, D+1 컷오프(toExclusive) 이전 거래를 최신순으로 (E-62 ①②).
      * from은 채팅 3일 창·날짜 지정용이며 없으면 상한 없이 본다 (E-48).
@@ -61,6 +64,16 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     /** 이상치 기준선 — 최근 N일 거래 전부 (E-62 ④). 그룹화는 서비스가 한다. */
     List<Transaction> findAllByUserIdAndOccurredAtGreaterThanEqual(long userId, OffsetDateTime from);
+
+    /** 월간 리포트 — 기간 안의 거래 전부 (E-94). 회고 여부와 무관하게 읽는다 — totalSpending은 전체 지출이다. */
+    @Query("""
+            select t from Transaction t
+            where t.userId = :userId and t.occurredAt >= :from and t.occurredAt < :toExclusive
+            order by t.occurredAt asc, t.id asc
+            """)
+    List<Transaction> findAllInRange(@Param("userId") long userId,
+                                     @Param("from") OffsetDateTime from,
+                                     @Param("toExclusive") OffsetDateTime toExclusive);
 
     /** 묶음 명명 표본 — 이 묶음에 배정된 거래 (E-64). */
     List<Transaction> findAllByBehaviorIdOrderByOccurredAtDesc(Long behaviorId);

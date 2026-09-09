@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,4 +36,7 @@ public interface BehaviorClusterRepository extends JpaRepository<BehaviorCluster
 
     /** 상세의 거래 합집합용 — 이 상위 묶음에 롤업된 리프들 (E-59). */
     List<BehaviorCluster> findAllByParentId(Long parentId);
+
+    /** 월간 리포트 `repeatCount` — 조정 대상 상위 묶음들의 리프를 한 번에 (E-94 · E-59). */
+    List<BehaviorCluster> findAllByParentIdIn(Collection<Long> parentIds);
 }
