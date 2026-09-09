@@ -141,6 +141,24 @@ class MonthlySnapshotServiceImplTest {
     }
 
     @Test
+    void 직전_달이_아닌_과거_달은_확정만_하고_실적을_배분하지_않는다() {
+        givenTransactions(
+                transaction(1L, "2026-06-10T12:00:00+09:00", 60_000, null),
+                transaction(2L, "2026-07-10T12:00:00+09:00", 31_000, null));
+        when(monthlySnapshotRepository.insertIfAbsent(USER_ID, "2026-07", 31_000, 0, 0, 29_000)).thenReturn(1);
+        when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-07"))
+                .thenReturn(Optional.empty(), Optional.of(snapshot("2026-07", 31_000, 0, 0, 29_000)));
+
+        // 현재 9월 — 7월은 두 달 전이다
+        MonthlyReportResponse response = service.monthly(USER_ID, JULY, SEPTEMBER);
+
+        assertTrue(response.finalized());
+        assertEquals(29_000, response.savedAmount());
+        assertTrue(response.goalAllocations().isEmpty());
+        verifyNoInteractions(goalService, goalRepository);
+    }
+
+    @Test
     void 상위_묶음이_조정_대상이면_그_리프에_배정된_거래도_반복_횟수에_든다() {
         givenTransactions(
                 transaction(2L, "2026-08-20T23:10:00+09:00", 12_000, 11L),

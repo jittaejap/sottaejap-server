@@ -132,6 +132,22 @@ class MonthlyReportIntegrationTest {
     }
 
     @Test
+    void 직전_달이_아닌_과거_달은_확정만_하고_실적을_올리지_않는다() {
+        // 6월 60,000 · 7월 LOW 회고 3건 36,000 — 7월은 두 달 전이다
+        save("2026-06-05T12:00:00+09:00", 60_000);
+        writeThreeLowRetrospects("2026-07");
+        GoalView goal = goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, 0));
+        adoptFirstSuggestion(goal);
+
+        MonthlyReportResponse july = reportService.monthly(userId, JULY);
+
+        assertTrue(july.finalized());
+        assertEquals(24_000, july.savedAmount());
+        assertTrue(july.goalAllocations().isEmpty());
+        assertEquals(0, goalService.list(userId).goals().getFirst().currentAmount());
+    }
+
+    @Test
     void 확정된_달의_전월_값은_전월이_확정될_때_한_번_채워지고_그_뒤로_굳는다() {
         // 7월 LOW 회고 3건(조정 대상 묶음 · 반복 3회) · 8월 회고 없는 4,000
         writeThreeLowRetrospects("2026-07");

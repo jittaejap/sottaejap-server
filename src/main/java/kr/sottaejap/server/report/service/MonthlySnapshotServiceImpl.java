@@ -41,7 +41,9 @@ import java.util.stream.Collectors;
  * 읽지도 않는다 — 회고를 더할 때마다 지난달 숫자가 흔들리면 안 된다. 없으면 계산해 넣는다. 동시에 들어온 첫 조회
  * 둘은 {@link MonthlySnapshotRepository#insertIfAbsent}가 가른다.
  *
- * <p>배분은 {@link GoalRepository#addCurrentAmount}로 DB에서 원자적으로 더한다.
+ * <p><b>실적 배분은 직전 달(현재 연월 − 1)이 확정되는 요청에서만</b> 한다 (E-94 ④). 그 이전 달은 확정만 하고
+ * 실적을 올리지 않는다 — 어느 과거 달이든 배분하면 달성률이 "얼마나 아꼈나"가 아니라 "과거 달을 몇 개 열어봤나"에
+ * 좌우된다. 배분은 {@link GoalRepository#addCurrentAmount}로 DB에서 원자적으로 더한다.
  *
  * <p><b>확정된 달의 전월 값도 굳어 있다.</b> {@code previousTotalSpending}은 저장된 {@code savedAmount}에서 역산하고
  * (04 §3의 식 {@code savedAmount = previousTotalSpending − totalSpending}이 응답 안에서 항상 성립한다),
@@ -87,7 +89,8 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
 
         int inserted = monthlySnapshotRepository.insertIfAbsent(userId, MonthlySnapshot.text(month),
                 figures.totalSpending(), figures.unsatisfiedCount(), figures.repeatCount(), savedAmount);
-        List<GoalAllocation> allocations = inserted == 1 ? allocate(userId, savedAmount) : List.of();
+        boolean allocatable = inserted == 1 && month.equals(currentMonth.minusMonths(1));
+        List<GoalAllocation> allocations = allocatable ? allocate(userId, savedAmount) : List.of();
         MonthlySnapshot snapshot = monthlySnapshotRepository.findByUserIdAndYearMonth(userId, MonthlySnapshot.text(month))
                 .orElseThrow(() -> new IllegalStateException("방금 넣었거나 다른 요청이 넣은 스냅샷이 없습니다: " + month));
         return finalizedResponse(snapshot, previousStored, allocations);
