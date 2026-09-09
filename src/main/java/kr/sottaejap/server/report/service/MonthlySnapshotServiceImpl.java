@@ -48,7 +48,9 @@ import java.util.stream.Collectors;
  * <p><b>확정된 달의 전월 값도 굳어 있다.</b> {@code previousTotalSpending}은 저장된 {@code savedAmount}에서 역산하고
  * (04 §3의 식 {@code savedAmount = previousTotalSpending − totalSpending}이 응답 안에서 항상 성립한다),
  * {@code previousRepeatCount}는 전월 스냅샷이 있으면 그 값, 없으면 null이다 — 전월이 나중에 확정되면 한 번 채워지고
- * 그 뒤로는 움직이지 않는다. 지금 거래로 다시 세면 전월 회고 하나에 확정된 달의 응답이 바뀐다.
+ * 그 뒤로는 움직이지 않는다. 지금 거래로 다시 세면 전월 회고 하나에 확정된 달의 응답이 바뀐다. 단, <b>"전월 없음"으로
+ * 확정된 달({@code savedAmount} null)은 전월 스냅샷이 나중에 생겨도 {@code previousRepeatCount}가 null이다</b> — 두 값은 같은
+ * 전월을 말해야 하고, "지난달 없음"과 "지난달 반복 3회"가 한 응답에 같이 나오면 안 된다.
  *
  * <p>확정하지 않은 달(이번 달, 첫 거래월 이전)의 전월 값은 전월 스냅샷이 있으면 그것, 없으면 지금 거래로 계산하고
  * 저장하지 않는다. 전월에 거래도 스냅샷도 없으면 "전월 없음"이라 {@code savedAmount}가 null이다.
@@ -162,13 +164,18 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
         return allocations;
     }
 
-    /** 확정된 달 — 세 숫자는 저장값이고 전월 값도 거기서만 나온다. */
+    /**
+     * 확정된 달 — 세 숫자는 저장값이고 전월 값도 거기서만 나온다. 전월 두 값은 출처가 하나다: 전월 합이 "없음"(null)이면
+     * 반복 횟수도 없음이다. 남는 조합 {@code (60000, null)}은 모순이 아니라 "금액은 굳었고 횟수는 아직 모른다"다.
+     */
     private static MonthlyReportResponse finalizedResponse(MonthlySnapshot snapshot, Optional<MonthlySnapshot> previousStored,
                                                            List<GoalAllocation> allocations) {
         Integer previousTotalSpending = snapshot.getSavedAmount() == null
                 ? null
                 : snapshot.getTotalSpending() + snapshot.getSavedAmount();
-        Integer previousRepeatCount = previousStored.map(MonthlySnapshot::getRepeatCount).orElse(null);
+        Integer previousRepeatCount = previousTotalSpending == null
+                ? null
+                : previousStored.map(MonthlySnapshot::getRepeatCount).orElse(null);
         return new MonthlyReportResponse(snapshot.getYearMonth(), true,
                 snapshot.getTotalSpending(), previousTotalSpending, snapshot.getSavedAmount(),
                 snapshot.getUnsatisfiedCount(), snapshot.getRepeatCount(), previousRepeatCount,

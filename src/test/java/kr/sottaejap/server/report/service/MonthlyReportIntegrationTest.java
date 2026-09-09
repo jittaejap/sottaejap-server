@@ -175,6 +175,22 @@ class MonthlyReportIntegrationTest {
     }
 
     @Test
+    void 전월_없음으로_확정된_달은_전월이_나중에_확정돼도_전월_값이_전부_null이다() {
+        // 8월만 있는 상태에서 8월 확정 → 뒤늦게 7월 회고 3건 → 7월 확정(반복 3회) → 8월 재조회
+        save("2026-08-25T09:00:00+09:00", 4_000);
+        MonthlyReportResponse augustFirst = reportService.monthly(userId, AUGUST);
+        assertNull(augustFirst.savedAmount());
+
+        writeThreeLowRetrospects("2026-07");
+        assertEquals(3, reportService.monthly(userId, JULY).repeatCount());
+        MonthlyReportResponse augustAgain = reportService.monthly(userId, AUGUST);
+
+        assertNull(augustAgain.previousTotalSpending());
+        assertNull(augustAgain.savedAmount());
+        assertNull(augustAgain.previousRepeatCount());
+    }
+
+    @Test
     void 전월_데이터가_없는_달은_감소액_없이_확정되고_배분도_없다() {
         save("2026-07-05T12:00:00+09:00", 25_000);
         goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, 0));

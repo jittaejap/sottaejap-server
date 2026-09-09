@@ -217,6 +217,22 @@ class MonthlySnapshotServiceImplTest {
     }
 
     @Test
+    void 전월_없음으로_확정된_달은_전월_스냅샷이_나중에_생겨도_전월_반복_횟수가_null이다() {
+        // 8월은 전월 없이(savedAmount null) 확정됐고, 그 뒤 7월 CSV가 올라와 7월도 확정됐다(반복 3회)
+        when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-08"))
+                .thenReturn(Optional.of(snapshot("2026-08", 31_000, 0, 0, null)));
+        when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-07"))
+                .thenReturn(Optional.of(snapshot("2026-07", 60_000, 3, 3, null)));
+
+        MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
+
+        // "지난달 없음"과 "지난달 반복 3회"가 한 응답에 같이 나오면 안 된다 — 두 값은 같은 전월을 말한다
+        assertNull(response.previousTotalSpending());
+        assertNull(response.savedAmount());
+        assertNull(response.previousRepeatCount());
+    }
+
+    @Test
     void 전월_데이터가_없으면_감소액과_전월_값은_null이고_배분도_없다() {
         givenTransactions(transaction(1L, "2026-08-10T12:00:00+09:00", 60_000, null));
         when(transactionRepository.findTopByUserIdOrderByOccurredAtAsc(USER_ID))
