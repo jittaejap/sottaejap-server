@@ -174,8 +174,16 @@ public class TransactionServiceImpl implements TransactionService {
         return row.sourceCategory() == null ? DEFAULT_CATEGORY : row.sourceCategory();
     }
 
+    /**
+     * 컬럼 길이에 맞춰 자른다. 길이는 <b>코드 포인트</b>로 센다 — UTF-16 경계에서 자르면 서러게이트 페어(이모지 등)가
+     * 반으로 끊겨 짝 없는 반쪽 문자가 저장된다. {@code ClusterNameTemplate.truncate}(12자 · 이슈 #20)와 같은 셈법이다.
+     * {@code VARCHAR(n)}은 문자 수 기준이라 코드 포인트 n개는 언제나 들어간다.
+     */
     private static String truncate(String value, int maxLength) {
-        return value == null || value.length() <= maxLength ? value : value.substring(0, maxLength);
+        if (value == null || value.codePointCount(0, value.length()) <= maxLength) {
+            return value;
+        }
+        return value.substring(0, value.offsetByCodePoints(0, maxLength));
     }
 
     private static LocalDate boundaryDate(List<Transaction> imported, boolean earliest) {
