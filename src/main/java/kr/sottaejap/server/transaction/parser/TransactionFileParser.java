@@ -109,9 +109,11 @@ public class TransactionFileParser {
      * 비어 있다. 32MB는 그 아래이면서 계약 상한을 꽉 채운 파일(20,030행 × 20칸 ≈ 24MB)보다 위다.
      * <b>두 문턱은 서로를 대신하지 못한다</b> — 넓은 시트는 바이트가, 좁고 긴 시트는 행수가 먼저 걸린다.
      *
-     * <p>이 값을 <b>zip 중앙 디렉터리에서</b> 읽는 것이 중요하다 ({@link #inflatedBytes}). 압축을 풀어 보고
-     * 재면 이미 늦다 — {@code OPCPackage.open(InputStream)}은 한 행을 세기 전에 모든 파트를 힙 {@code byte[]}로
-     * 통째로 풀어서, 10MB 안에 드는 파일도 세기 전에 {@code OutOfMemoryError} → 500이 됐다 (PR #63 리뷰 실측).
+     * <p>이 값을 <b>zip 중앙 디렉터리에서</b> 먼저 읽는 것이 중요하다 ({@link #inflatedBytes(byte[])}).
+     * 다 풀어 보고 재면 이미 늦다 — {@code OPCPackage.open(InputStream)}은 한 행을 세기 전에 모든 파트를 힙
+     * {@code byte[]}로 통째로 풀어서, 10MB 안에 드는 파일도 세기 전에 {@code OutOfMemoryError} → 500이 됐다
+     * (PR #63 리뷰 실측). 다만 적힌 값은 파일이 스스로 적은 것이라 <b>믿기만 해서는 안 된다</b> —
+     * 상한 안이라고 적은 파일은 {@link #inflatedBytes(ZipFile)}가 흘려보내며 실제로 다시 잰다.
      */
     private static final long MAX_INFLATED_BYTES = 32L << 20;
 
@@ -238,10 +240,10 @@ public class TransactionFileParser {
 
         /**
          * XLSX 선계수 — 압축을 푼 패키지 크기. 이것도 여는 비용이 이유다 ({@link #MAX_INFLATED_BYTES}).
-         * zip 중앙 디렉터리에서 읽은 값이라 <b>확정값</b>이다 — 읽다 멈춘 값이 아니다.
+         * zip에 적힌 값이면 확정값이지만 풀어 보다 멈춘 값이면 하한이라, 다른 선계수 메시지와 같이 "이상"으로 적는다.
          */
         private static TooManyRowsException tooLargeToOpen(long bytes) {
-            return new TooManyRowsException("압축을 풀면 " + bytes / (1 << 20) + "MB라 상한 "
+            return new TooManyRowsException("압축을 풀면 " + bytes / (1 << 20) + "MB 이상이라 상한 "
                     + (MAX_INFLATED_BYTES >> 20) + "MB를 넘습니다 — 워크북을 열면 힙이 모자랍니다.");
         }
     }
@@ -559,8 +561,9 @@ public class TransactionFileParser {
      * {@code ZipInputStreamZipEntrySource}를 타서 <b>한 행을 세기 전에 모든 파트를 힙 byte[]로 통째로
      * 푼다</b> — 여기서 드는 메모리는 버퍼가 아니라 O(압축 푼 크기)다. 업로드 상한 10MB 안의 파일도
      * 이 자리에서 {@code OutOfMemoryError} → 500이 됐다 (PR #63 리뷰 실측 — 9.19MB zip). 그래서
-     * {@link #inflatedBytes}가 zip 중앙 디렉터리만 읽어 크기를 확인하고, 넘으면 {@code OPCPackage}를
-     * 아예 부르지 않는다. 통과한 뒤에 푸는 것은 {@link #MAX_INFLATED_BYTES} 이하임이 확인된 바이트다.
+     * {@link #inflatedBytes(byte[])}가 zip 중앙 디렉터리에 적힌 크기로 먼저 거르고, 상한 안이라고 적은
+     * 파일만 흘려보내며 실제 크기를 다시 잰다. 넘으면 {@code OPCPackage}를 아예 부르지 않으므로,
+     * 여기서 푸는 것은 {@link #MAX_INFLATED_BYTES} 이하임이 <b>실제로</b> 확인된 바이트다.
      *
      * <p>행을 셀 때는 zip을 직접 열지 않고 {@link XSSFReader}를 쓴다. 시트 순서와 경로를 이름 규칙이
      * 아니라 워크북 관계로 찾아야 <b>첫 장</b>이 {@code getSheetAt(0)}과 같은 장이 된다.
@@ -600,8 +603,14 @@ public class TransactionFileParser {
     }
 
     /**
-     * 압축을 풀지 않고 푼 뒤의 크기를 잰다. zip <b>중앙 디렉터리</b>에 파트마다 적혀 있는 값을 더할 뿐이라
-     * 파일이 몇 GB로 풀리든 여기서 드는 메모리는 목록 하나다.
+     * 압축을 푼 뒤의 크기를 잰다. 먼저 zip <b>중앙 디렉터리</b>에 파트마다 적혀 있는 값을 더한다 — 압축을
+     * 풀지 않으므로 파일이 몇 GB로 풀린다고 적혀 있든 여기서 드는 메모리는 목록 하나다.
+     *
+     * <p><b>상한 안이라고 적은 파일은 그 말을 믿지 않고 실제로 풀어 보며 다시 잰다</b>
+     * ({@link #inflatedBytes(ZipFile)}). 적힌 크기는 파일이 스스로 적은 값이라 거짓일 수 있고, 거짓이면
+     * <b>이 문턱이 통째로 꺼진 채</b> {@code OPCPackage.open}이 실제 크기를 힙에 푼다 — 이 PR이 닫으려던
+     * 바로 그 자리다. 행수 문턱은 그보다 뒤에 있어 대신 받아 주지 못한다(물리적 행이 적고 칸만 넓은 파일은
+     * 행수로 걸리지 않는다). 크기를 크게 적은 거짓은 첫 걸음이 이미 거른다.
      *
      * <p>commons-compress {@code ZipFile}을 쓰는 것은 <b>랜덤 액세스</b>이기 때문이다. JDK
      * {@code ZipInputStream}은 앞에서부터 흘려 읽어 로컬 헤더만 보는데, POI가 쓴 xlsx는 거기에 크기를
@@ -609,13 +618,32 @@ public class TransactionFileParser {
      */
     private static long inflatedBytes(byte[] content) throws IOException {
         try (ZipFile zip = ZipFile.builder().setSeekableByteChannel(new SeekableInMemoryByteChannel(content)).get()) {
-            long bytes = 0;
+            long declared = 0;
             for (Enumeration<ZipArchiveEntry> entries = zip.getEntries(); entries.hasMoreElements(); ) {
-                // 크기를 적지 않은 파트는 -1이다. 0으로 보고 넘긴다 — 뒤의 행수 문턱이 다시 받는다.
-                bytes += Math.max(entries.nextElement().getSize(), 0);
+                // 크기를 적지 않은 파트는 -1이다. 0으로 보고 넘긴다 — 어차피 아래에서 실제로 푼다.
+                declared += Math.max(entries.nextElement().getSize(), 0);
             }
-            return bytes;
+            return declared > MAX_INFLATED_BYTES ? declared : inflatedBytes(zip);
         }
+    }
+
+    /**
+     * 파트를 실제로 풀어 보며 센다. 흘려보내며 세므로 드는 메모리는 버퍼 하나이고, 상한을 넘는 순간
+     * 그만두므로 돌려주는 값은 <b>"이 값 이상"</b>이다 — 넘겼다는 것만 알면 되고, 정확한 크기를 알자고
+     * 몇백 MB를 끝까지 풀 이유가 없다.
+     */
+    private static long inflatedBytes(ZipFile zip) throws IOException {
+        byte[] sink = new byte[8192];
+        long bytes = 0;
+        for (Enumeration<ZipArchiveEntry> entries = zip.getEntries();
+             bytes <= MAX_INFLATED_BYTES && entries.hasMoreElements(); ) {
+            try (InputStream part = zip.getInputStream(entries.nextElement())) {
+                for (int read; bytes <= MAX_INFLATED_BYTES && (read = part.read(sink)) > 0; ) {
+                    bytes += read;
+                }
+            }
+        }
+        return bytes;
     }
 
     /**

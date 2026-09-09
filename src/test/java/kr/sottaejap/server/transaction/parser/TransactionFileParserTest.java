@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -438,6 +440,22 @@ class TransactionFileParserTest {
         assertTrue(rejected.getMessage().startsWith("워크북 전체 물리적 행이"), rejected.getMessage());
     }
 
+    /**
+     * zip이 적어 둔 크기는 <b>파일이 스스로 적은 값</b>이라 그대로 믿을 수 없다. 0이라고 적어 두면
+     * <b>크기 문턱이 통째로 꺼지고</b>(실측 — 이 파일이 거절되지 않고 그대로 파싱됐다), 그 뒤
+     * {@code OPCPackage.open}이 실제 크기를 힙에 푼다. 행수 문턱은 그 자리보다 뒤인 데다 이 파일처럼
+     * 행이 적고 칸만 넓으면 걸리지도 않는다. 그래서 상한 안이라고 적은 파일은 흘려보내며 실제로 다시 잰다.
+     */
+    @Test
+    void XLSX는_zip이_적어_둔_크기를_믿지_않는다() {
+        byte[] file = withZeroedInflatedSizes(workbookWithLargeSecondSheet());
+
+        TransactionFileParser.TooManyRowsException rejected = assertThrows(
+                TransactionFileParser.TooManyRowsException.class, () -> parser.parseXlsx(file));
+
+        assertTrue(rejected.getMessage().startsWith("압축을 풀면"), rejected.getMessage());
+    }
+
     /** 머리글 아래 {@code rows}행이 든 한 장짜리 워크북. */
     private static byte[] oneSheetWorkbook(int rows) {
         return workbook(sheet -> {
@@ -496,6 +514,33 @@ class TransactionFileParserTest {
         } catch (IOException cannotWrite) {
             throw new UncheckedIOException(cannotWrite);
         }
+    }
+
+    /**
+     * 중앙 디렉터리 레코드마다 적혀 있는 "압축을 풀면 몇 바이트"를 0으로 고친다. 로컬 헤더와 압축된
+     * 데이터는 그대로라 POI는 이 파일을 종전대로 읽는다 — 거짓인 것은 적힌 크기뿐이다.
+     */
+    private static byte[] withZeroedInflatedSizes(byte[] xlsx) {
+        byte[] patched = xlsx.clone();
+        ByteBuffer zip = ByteBuffer.wrap(patched).order(ByteOrder.LITTLE_ENDIAN);
+        int end = endRecord(zip, patched.length);
+        for (int record = zip.getInt(end + 16); record < end && zip.getInt(record) == 0x02014b50; ) {
+            zip.putInt(record + 24, 0);
+            record += 46 + (zip.getShort(record + 28) & 0xFFFF)   // 이름
+                    + (zip.getShort(record + 30) & 0xFFFF)        // 확장 필드
+                    + (zip.getShort(record + 32) & 0xFFFF);       // 주석
+        }
+        return patched;
+    }
+
+    /** zip 끝 기록(EOCD)의 자리. 기록은 최소 22바이트이고, 그 16바이트째에 중앙 디렉터리 시작 위치가 적혀 있다. */
+    private static int endRecord(ByteBuffer zip, int length) {
+        for (int i = length - 22; i >= 0; i--) {
+            if (zip.getInt(i) == 0x06054b50) {
+                return i;
+            }
+        }
+        throw new IllegalStateException("zip 끝 기록을 찾지 못했습니다");
     }
 
     /** {@code from}행부터 {@code rows}줄을 같은 거래로 채운다. */
