@@ -97,6 +97,20 @@ class RetrospectWriterTest {
     }
 
     @Test
+    void 가운뎃점_둘레_공백은_정본_표기로_저장한다() {
+        givenOwnedTransaction();
+        givenNoRetrospect();
+        givenRecomputeAssignsBehavior();
+
+        // 화면 문구는 "휴식 · 취미"지만 정본은 "휴식·취미"다. 원문을 그대로 저장하면 같은 태그가 두 묶음으로 갈라진다.
+        writer.write(USER_ID, request("휴식 · 취미", " 혼자 ", RetrospectSource.ONBOARDING));
+
+        Retrospect saved = captureSaved();
+        assertEquals("휴식·취미", saved.getPurpose());
+        assertEquals("혼자", saved.getCompanion());
+    }
+
+    @Test
     void 목적과_동행인이_null이면_미확정으로_저장한다() {
         givenOwnedTransaction();
         givenNoRetrospect();

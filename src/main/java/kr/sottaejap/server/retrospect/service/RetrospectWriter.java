@@ -33,7 +33,9 @@ public class RetrospectWriter {
 
     @Transactional
     public Long write(long userId, RetrospectSaveRequest request) {
-        validateTags(request);
+        // 목적·동행인은 표준 태그 7/6종 또는 null이다 (E-20). 공백 표기는 정본으로 되돌려 저장하고, 그래도 밖이면 400이다.
+        String purpose = StandardTags.requirePurpose(request.purpose());
+        String companion = StandardTags.requireCompanion(request.companion());
 
         // 남의 거래와 없는 거래를 구분하지 않는다 — 둘 다 404다 (05 §2).
         Transaction transaction = transactionRepository.findByIdAndUserId(request.transactionId(), userId)
@@ -47,8 +49,8 @@ public class RetrospectWriter {
             retrospectRepository.saveAndFlush(Retrospect.completed(
                     transaction.getId(),
                     request.satisfaction(),
-                    request.purpose(),
-                    request.companion(),
+                    purpose,
+                    companion,
                     request.repeatIntent(),
                     request.sourceOrDefault(),
                     OffsetDateTime.now(clock)));
@@ -63,15 +65,5 @@ public class RetrospectWriter {
             throw new IllegalStateException("재계산 후 behaviorId가 비었다: transactionId=" + transaction.getId());
         }
         return behaviorId;
-    }
-
-    /** 목적·동행인은 표준 태그 7/6종 또는 null이다 (E-20). 자유 문자열은 저장하지 않는다. */
-    private static void validateTags(RetrospectSaveRequest request) {
-        if (request.purpose() != null && !StandardTags.isPurpose(request.purpose())) {
-            throw new BusinessException(CommonErrorCode.INVALID_TAG);
-        }
-        if (request.companion() != null && !StandardTags.isCompanion(request.companion())) {
-            throw new BusinessException(CommonErrorCode.INVALID_TAG);
-        }
     }
 }

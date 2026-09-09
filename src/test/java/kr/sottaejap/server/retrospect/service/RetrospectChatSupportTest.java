@@ -36,7 +36,6 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -174,6 +173,28 @@ class RetrospectChatSupportTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void 가운뎃점_둘레_공백은_확정값도_AI_후보값도_정본_표기로_맞춘다() {
+        givenTransactionFound();
+        when(candidateService.reasonCodeFor(USER_ID, transaction)).thenReturn(ReasonCode.MANUAL_PICK);
+        givenAiReply(new ChatResponse("친구들과 만나셨군요.",
+                toolResults(reflectionData("만남 · 사교", null, null, null, List.of())), false, false));
+
+        // 확정값(companion)은 요청이, 후보값(purpose)은 AI가 공백을 넣어 보낸 경우다. 둘 다 400이 아니라 정본으로 맞춘다.
+        RetrospectChatResponse response = support.chat(USER_ID, new RetrospectChatRequest(
+                TRANSACTION_ID, "친구 만났어요", ReflectionStep.PURPOSE,
+                new ReflectionDraft(Satisfaction.HIGH, null, "친구 ", null), null));
+
+        assertEquals("만남·사교", response.reflection().purpose());
+        assertFalse(response.uncertainFields().contains("purpose"));
+
+        // 확정값도 AI에 정본으로 나간다 — 공백이 낀 채 넘기면 AI 프롬프트와 저장 값이 어긋난다.
+        Map<String, Object> reflectionState =
+                (Map<String, Object>) captureChatRequest().taskContext().state().get("reflection");
+        assertEquals("친구", reflectionState.get("companion"));
+    }
+
+    @Test
     void repeat_intention은_repeatIntent로_바뀌고_다음_단계는_REPEAT다() {
         givenTransactionFound();
         when(candidateService.reasonCodeFor(USER_ID, transaction)).thenReturn(ReasonCode.MANUAL_PICK);
@@ -243,7 +264,8 @@ class RetrospectChatSupportTest {
         RetrospectChatResponse response = support.chat(USER_ID, new RetrospectChatRequest(
                 TRANSACTION_ID, "맞아요", ReflectionStep.CONFIRM, confirmed, null));
 
-        assertSame(confirmed, response.reflection());
+        // 값이 같으면 된다 — 확정값은 표준 태그 정규화를 지나므로 같은 인스턴스가 아니다.
+        assertEquals(confirmed, response.reflection());
     }
 
     @Test

@@ -28,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 /**
  * POST /retrospects/chat 프록시 (E-63). 상태 없는 경유지 — 회고 행을 만들지 않고 AI /chat(REFLECTION)에 위임한다.
@@ -64,8 +65,7 @@ public class RetrospectChatSupport {
             throw new BusinessException(CommonErrorCode.DUPLICATE_RETROSPECT);
         }
 
-        ReflectionDraft confirmed = request.reflectionOrDefault();
-        validateTags(confirmed);
+        ReflectionDraft confirmed = normalizeTags(request.reflectionOrDefault());
 
         ReflectionStep step = request.stepOrDefault();
         ReasonCode reasonCode = candidateService.reasonCodeFor(userId, transaction);
@@ -92,14 +92,13 @@ public class RetrospectChatSupport {
                 response.isFallback());
     }
 
-    /** 사용자가 확인한 값도 표준 태그여야 한다. null은 미확정이므로 허용한다 (E-20). */
-    private void validateTags(ReflectionDraft draft) {
-        if (draft.purpose() != null && !StandardTags.isPurpose(draft.purpose())) {
-            throw new BusinessException(CommonErrorCode.INVALID_TAG);
-        }
-        if (draft.companion() != null && !StandardTags.isCompanion(draft.companion())) {
-            throw new BusinessException(CommonErrorCode.INVALID_TAG);
-        }
+    /** 사용자가 확인한 값도 표준 태그여야 한다. 공백 표기는 정본으로 맞추고, null은 미확정이므로 허용한다 (E-20). */
+    private static ReflectionDraft normalizeTags(ReflectionDraft draft) {
+        return new ReflectionDraft(
+                draft.satisfaction(),
+                StandardTags.requirePurpose(draft.purpose()),
+                StandardTags.requireCompanion(draft.companion()),
+                draft.repeatIntent());
     }
 
     private String resolveMessage(String message, ReflectionStep step) {
@@ -192,36 +191,30 @@ public class RetrospectChatSupport {
             return confirmed;
         }
 
-        // 키가 없으면 AI가 이번 턴에 판단하지 않은 것 — 사용자가 확인한 값을 유지한다. 키가 있는데 표준 태그 밖이면 버리고 되묻는다.
-        String purpose = confirmed.purpose();
-        if (data.containsKey("purpose")) {
-            Object rawPurpose = data.get("purpose");
-            if (rawPurpose == null) {
-                purpose = null;
-            } else if (StandardTags.isPurpose(rawPurpose.toString())) {
-                purpose = rawPurpose.toString();
-            } else {
-                purpose = null;
-                uncertainFields.add("purpose");
-            }
-        }
-
-        String companion = confirmed.companion();
-        if (data.containsKey("companion")) {
-            Object rawCompanion = data.get("companion");
-            if (rawCompanion == null) {
-                companion = null;
-            } else if (StandardTags.isCompanion(rawCompanion.toString())) {
-                companion = rawCompanion.toString();
-            } else {
-                companion = null;
-                uncertainFields.add("companion");
-            }
-        }
+        String purpose = cleanTag(data, "purpose", confirmed.purpose(), StandardTags::normalizePurpose, uncertainFields);
+        String companion = cleanTag(data, "companion", confirmed.companion(), StandardTags::normalizeCompanion,
+                uncertainFields);
 
         Satisfaction satisfaction = parseSatisfaction(data.get("satisfaction"), confirmed.satisfaction());
         Boolean repeatIntent = data.get("repeat_intention") instanceof Boolean value ? value : confirmed.repeatIntent();
         return new ReflectionDraft(satisfaction, purpose, companion, repeatIntent);
+    }
+
+    /** 키가 없으면 AI가 이번 턴에 판단하지 않은 것 — 확인한 값을 유지한다. 키가 있는데 표준 태그 밖이면 버리고 되묻는다. */
+    private String cleanTag(Map<String, Object> data, String field, String confirmed,
+                            UnaryOperator<String> normalizer, Set<String> uncertainFields) {
+        if (!data.containsKey(field)) {
+            return confirmed;
+        }
+        Object raw = data.get(field);
+        if (raw == null) {
+            return null;
+        }
+        String canonical = normalizer.apply(raw.toString());
+        if (canonical == null) {
+            uncertainFields.add(field);
+        }
+        return canonical;
     }
 
     private Satisfaction parseSatisfaction(Object raw, Satisfaction fallback) {
