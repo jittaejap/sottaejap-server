@@ -167,7 +167,7 @@ class InternalAiControllerTest {
     void get_action_plan은_AI가_id로_고를_수_있는_목록을_준다() throws Exception {
         when(suggestionService.internalList(1L)).thenReturn(new SuggestionListResponse(List.of(
                 new SuggestionView(7L, 12L, "심야 배달", 36_000, 12_000, 3, -0.25, Quadrant.MINOR,
-                        3, 36_000, null, SuggestionStatus.PROPOSED, "심야 배달은(는) 만족도가 낮았어요."))));
+                        3, 36_000, null, SuggestionStatus.PROPOSED, "심야 배달의 만족도가 낮았어요."))));
 
         mockMvc.perform(get("/internal/ai/users/1/suggestions"))
                 .andExpect(status().isOk())

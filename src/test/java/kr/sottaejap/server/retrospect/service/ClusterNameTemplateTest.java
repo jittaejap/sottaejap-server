@@ -34,4 +34,15 @@ class ClusterNameTemplateTest {
         assertEquals(ClusterNameTemplate.MAX_NAME_LENGTH,
                 ClusterNameTemplate.nameFor("가나다라마바사아자차카타파하||자기계발|").length());
     }
+
+    /** 12자는 코드 포인트다 (이슈 #20) — 이모지가 열두 번째 자리에 걸려도 서러게이트 페어를 반으로 끊지 않는다. */
+    @Test
+    void 열두_번째_자리의_이모지를_반으로_자르지_않는다() {
+        String name = "심야 배달 카페 🍜🍕"; // length() 13 · 코드 포인트 11 — 종전 substring(0, 12)는 🍕를 반으로 끊었다
+        String truncated = ClusterNameTemplate.truncate(name + "🍔🍟"); // 코드 포인트 13
+
+        assertEquals(name, ClusterNameTemplate.truncate(name));
+        assertEquals(name + "🍔", truncated);
+        assertEquals(ClusterNameTemplate.MAX_NAME_LENGTH, truncated.codePointCount(0, truncated.length()));
+    }
 }

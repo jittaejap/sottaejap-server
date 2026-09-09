@@ -50,8 +50,14 @@ public final class ClusterNameTemplate {
         return displayName == null || displayName.isBlank() ? nameFor(clusterKey) : displayName;
     }
 
-    /** AI가 지은 이름에도 같은 길이 규격을 적용한다 (FR-05-05). */
+    /**
+     * AI가 지은 이름에도 같은 길이 규격을 적용한다 (FR-05-05). 12자는 <b>코드 포인트</b>로 센다 (이슈 #20) —
+     * {@code String.length()}는 UTF-16 코드 단위라 이모지가 경계에 걸리면 서러게이트 페어가 반으로 끊긴다.
+     */
     public static String truncate(String name) {
-        return name.length() <= MAX_NAME_LENGTH ? name : name.substring(0, MAX_NAME_LENGTH);
+        if (name.codePointCount(0, name.length()) <= MAX_NAME_LENGTH) {
+            return name;
+        }
+        return name.substring(0, name.offsetByCodePoints(0, MAX_NAME_LENGTH));
     }
 }
