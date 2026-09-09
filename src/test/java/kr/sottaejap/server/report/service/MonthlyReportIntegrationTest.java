@@ -192,6 +192,17 @@ class MonthlyReportIntegrationTest {
     }
 
     @Test
+    void 첫_거래월_이전_달은_저장하지_않는다() {
+        save("2026-08-05T12:00:00+09:00", 25_000);
+
+        MonthlyReportResponse july = reportService.monthly(userId, JULY);
+
+        assertFalse(july.finalized());
+        assertEquals(0, july.totalSpending());
+        assertTrue(monthlySnapshotRepository.findByUserIdAndYearMonth(userId, "2026-07").isEmpty());
+    }
+
+    @Test
     void 이번_달은_매번_계산하고_저장하지_않는다() {
         save("2026-09-01T12:00:00+09:00", 7_000);
 

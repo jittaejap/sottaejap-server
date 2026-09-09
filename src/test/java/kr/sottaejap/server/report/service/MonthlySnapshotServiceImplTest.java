@@ -82,6 +82,9 @@ class MonthlySnapshotServiceImplTest {
         lenient().when(monthlySnapshotRepository.findByUserIdAndYearMonth(anyLong(), anyString())).thenReturn(Optional.empty());
         lenient().when(retrospectRepository.findAllByTransactionIdIn(any())).thenReturn(List.of());
         lenient().when(behaviorClusterRepository.findEffectiveByUserId(USER_ID)).thenReturn(List.of());
+        // 첫 거래는 7월 — 7월 이후 어느 달이든 저장할 수 있다
+        lenient().when(transactionRepository.findTopByUserIdOrderByOccurredAtAsc(USER_ID))
+                .thenReturn(Optional.of(transaction(0L, "2026-07-01T09:00:00+09:00", 1_000, null)));
     }
 
     @Test
@@ -145,6 +148,8 @@ class MonthlySnapshotServiceImplTest {
         givenTransactions(
                 transaction(1L, "2026-06-10T12:00:00+09:00", 60_000, null),
                 transaction(2L, "2026-07-10T12:00:00+09:00", 31_000, null));
+        when(transactionRepository.findTopByUserIdOrderByOccurredAtAsc(USER_ID))
+                .thenReturn(Optional.of(transaction(0L, "2026-06-01T09:00:00+09:00", 1_000, null)));
         when(monthlySnapshotRepository.insertIfAbsent(USER_ID, "2026-07", 31_000, 0, 0, 29_000)).thenReturn(1);
         when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-07"))
                 .thenReturn(Optional.empty(), Optional.of(snapshot("2026-07", 31_000, 0, 0, 29_000)));
@@ -214,6 +219,8 @@ class MonthlySnapshotServiceImplTest {
     @Test
     void 전월_데이터가_없으면_감소액과_전월_값은_null이고_배분도_없다() {
         givenTransactions(transaction(1L, "2026-08-10T12:00:00+09:00", 60_000, null));
+        when(transactionRepository.findTopByUserIdOrderByOccurredAtAsc(USER_ID))
+                .thenReturn(Optional.of(transaction(0L, "2026-08-01T09:00:00+09:00", 1_000, null)));
         when(monthlySnapshotRepository.insertIfAbsent(USER_ID, "2026-08", 60_000, 0, 0, null)).thenReturn(1);
         when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-08"))
                 .thenReturn(Optional.empty(), Optional.of(snapshot("2026-08", 60_000, 0, 0, null)));
@@ -226,6 +233,30 @@ class MonthlySnapshotServiceImplTest {
         assertNull(response.savedAmount());
         assertNull(response.previousRepeatCount());
         verifyNoInteractions(goalService, goalRepository);
+    }
+
+    @Test
+    void 첫_거래월_이전_달은_계산만_하고_저장하지_않는다() {
+        givenTransactions();
+        when(transactionRepository.findTopByUserIdOrderByOccurredAtAsc(USER_ID))
+                .thenReturn(Optional.of(transaction(0L, "2026-08-01T09:00:00+09:00", 1_000, null)));
+
+        MonthlyReportResponse response = service.monthly(USER_ID, JULY, SEPTEMBER);
+
+        assertFalse(response.finalized());
+        assertEquals(0, response.totalSpending());
+        verify(monthlySnapshotRepository, never()).insertIfAbsent(anyLong(), anyString(), anyInt(), anyInt(), anyInt(), any());
+    }
+
+    @Test
+    void 거래가_없는_사용자의_과거_달도_저장하지_않는다() {
+        givenTransactions();
+        when(transactionRepository.findTopByUserIdOrderByOccurredAtAsc(USER_ID)).thenReturn(Optional.empty());
+
+        MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
+
+        assertFalse(response.finalized());
+        verify(monthlySnapshotRepository, never()).insertIfAbsent(anyLong(), anyString(), anyInt(), anyInt(), anyInt(), any());
     }
 
     @Test

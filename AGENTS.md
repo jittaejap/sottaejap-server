@@ -70,9 +70,12 @@ Boot **4.1.1** · Spring Framework 7 · Security 7 · **Jackson 3** · Java **21
 
 - `GET /reports/monthly`의 **지난달**은 첫 조회 때 계산해 `monthly_snapshots`에 넣고 그 뒤로 다시 계산하지 않습니다. 회고를 더해도 숫자가
   그대로여야 하므로 "재계산이 스냅샷도 갱신해야 하지 않나"는 맞지 않습니다. **이번 달**은 매번 계산하고 저장하지 않습니다. 스케줄러는 없습니다.
-- `Goal.currentAmount`(실적)가 오르는 경로는 **지난달이 확정되는 그 요청** 하나뿐입니다 — `savedAmount > 0`을 ADOPTED 제안이 붙은 목표에
-  `expectedSaving` 비율로 배분합니다. 채택(`adopt`)은 여전히 실적을 바꾸지 않습니다 (E-82). 확정과 배분은 한 트랜잭션이고, 같은 달의 동시 첫 조회는
-  `MonthlySnapshotRepository.insertIfAbsent`(`ON CONFLICT DO NOTHING`)가 가릅니다.
+- `Goal.currentAmount`(실적)가 오르는 경로는 **직전 달(현재 연월 − 1)이 확정되는 그 요청** 하나뿐입니다 — `savedAmount > 0`을 ADOPTED 제안이 붙은 목표에
+  `expectedSaving` 비율로 배분합니다. 그 이전 달은 확정만 하고 실적을 올리지 않습니다. 채택(`adopt`)은 여전히 실적을 바꾸지 않습니다 (E-82).
+  확정과 배분은 한 트랜잭션이고, 같은 달의 동시 첫 조회는 `MonthlySnapshotRepository.insertIfAbsent`(`ON CONFLICT DO NOTHING`)가, 다른 달의 동시 확정은
+  `GoalRepository.addCurrentAmount`(DB에서 원자적으로 더함)가 가릅니다 — 엔티티를 읽어 더하고 쓰면 앞의 배분이 증발합니다.
+- **확정된 달은 전월 값도 굳어 있습니다.** `previousTotalSpending`은 저장된 `savedAmount`에서 역산하고 `previousRepeatCount`는 전월 스냅샷 값 또는 null입니다.
+  확정된 달을 조회할 때 거래 · 회고 · 묶음을 읽지 않습니다. 첫 거래월 이전 달은 저장하지 않습니다.
 - 산식(`totalSpending` · `savedAmount` · `unsatisfiedCount` · `repeatCount` · 배분)은 `rules/report/MonthlyDeltaRule`입니다. 현재 연월은 서비스가 `Clock`으로 넘깁니다.
 
 ## 응답 계약 (05 §0)

@@ -42,6 +42,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     /** analysisYearMonth = 최근 거래월 (E-60). */
     Optional<Transaction> findTopByUserIdOrderByOccurredAtDesc(long userId);
 
+    /** 월간 리포트의 하한 — 첫 거래월 이전 달은 스냅샷을 만들지 않는다 (E-94). */
+    Optional<Transaction> findTopByUserIdOrderByOccurredAtAsc(long userId);
+
     /**
      * 회고 후보 ⓪ — 이미 회고된 거래를 빼고, D+1 컷오프(toExclusive) 이전 거래를 최신순으로 (E-62 ①②).
      * from은 채팅 3일 창·날짜 지정용이며 없으면 상한 없이 본다 (E-48).

@@ -50,7 +50,7 @@ import java.util.stream.Collectors;
  * {@code previousRepeatCount}는 전월 스냅샷이 있으면 그 값, 없으면 null이다 — 전월이 나중에 확정되면 한 번 채워지고
  * 그 뒤로는 움직이지 않는다. 지금 거래로 다시 세면 전월 회고 하나에 확정된 달의 응답이 바뀐다.
  *
- * <p>확정하지 않은 달(이번 달)의 전월 값은 전월 스냅샷이 있으면 그것, 없으면 지금 거래로 계산하고
+ * <p>확정하지 않은 달(이번 달, 첫 거래월 이전)의 전월 값은 전월 스냅샷이 있으면 그것, 없으면 지금 거래로 계산하고
  * 저장하지 않는다. 전월에 거래도 스냅샷도 없으면 "전월 없음"이라 {@code savedAmount}가 null이다.
  */
 @Service
@@ -81,7 +81,7 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
                 .orElseGet(() -> Previous.computed(transactions, previousMonth));
         Integer savedAmount = MonthlyDeltaRule.savedAmount(previous.totalSpending(), figures.totalSpending());
 
-        if (!month.isBefore(currentMonth)) {
+        if (!month.isBefore(currentMonth) || !hasTransactionsUpTo(userId, month)) {
             return new MonthlyReportResponse(MonthlySnapshot.text(month), false,
                     figures.totalSpending(), previous.totalSpending(), savedAmount,
                     figures.unsatisfiedCount(), figures.repeatCount(), previous.repeatCount(), List.of());
@@ -94,6 +94,16 @@ public class MonthlySnapshotServiceImpl implements MonthlySnapshotService {
         MonthlySnapshot snapshot = monthlySnapshotRepository.findByUserIdAndYearMonth(userId, MonthlySnapshot.text(month))
                 .orElseThrow(() -> new IllegalStateException("방금 넣었거나 다른 요청이 넣은 스냅샷이 없습니다: " + month));
         return finalizedResponse(snapshot, previousStored, allocations);
+    }
+
+    /**
+     * 첫 거래월 이전 달은 저장하지 않는다. 굳힐 것이 없고, 인증된 사용자가 {@code ?yearMonth=1900-01}처럼 달을
+     * 바꿔 가며 부르면 0으로 채운 행이 끝없이 쌓인다. 거래가 하나도 없는 사용자도 같다.
+     */
+    private boolean hasTransactionsUpTo(long userId, YearMonth month) {
+        return transactionRepository.findTopByUserIdOrderByOccurredAtAsc(userId)
+                .map(first -> !YearMonth.from(first.getOccurredAt().atZoneSameInstant(TimeSlot.ZONE)).isAfter(month))
+                .orElse(false);
     }
 
     /**
