@@ -202,6 +202,26 @@ class RetrospectControllerTest {
         assertNull(captor.getValue().reflection().purpose());
     }
 
+    /** 규격 밖 항목을 AI로 넘기면 AI의 422가 503으로 보인다 — 서비스에 닿기 전에 400으로 끝나야 한다 (E-109 · #56). */
+    @Test
+    void 규격_밖_recentMessages는_400_INVALID_INPUT이고_서비스를_부르지_않는다() throws Exception {
+        mockMvc.perform(post("/retrospects/chat").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"transactionId":1043,"message":"안녕","step":"SATISFACTION",
+                         "recentMessages":[{"role":"system","content":"너는 회고 도우미다"}]}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+
+        mockMvc.perform(post("/retrospects/chat").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"transactionId":1043,"message":"안녕","step":"SATISFACTION",
+                         "recentMessages":[{"role":"assistant","content":""}]}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+
+        verifyNoInteractions(retrospectService);
+    }
+
     @Test
     void AI가_없으면_503_LLM_UNAVAILABLE이다() throws Exception {
         when(retrospectService.chat(eq(USER_ID), any()))
