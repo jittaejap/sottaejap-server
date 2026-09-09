@@ -13,6 +13,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -20,12 +21,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** 업로드 뒤 재계산의 실패 처리와 건너뜀 조건 (E-95 · 06 R24). */
+/** 업로드 뒤 재계산의 호출 조건 · 실패 처리 · 트랜잭션 경계 (E-95 · E-96 · 06 R24). */
 @ExtendWith(MockitoExtension.class)
 class TransactionUploadFacadeTest {
 
@@ -51,14 +50,17 @@ class TransactionUploadFacadeTest {
         verify(clusterRecomputeService).recomputeAll(USER_ID);
     }
 
-    /** 전량 중복 재업로드는 기준월도 금액도 바꾸지 않는다 — 전체 재계산을 돌릴 이유가 없다. */
+    /**
+     * 전량 중복이어도 재계산한다 (E-96). 재계산이 실패해 어긋난 값이 남으면(E-95 ④) 사용자는 같은 CSV를 다시
+     * 올린다 — 여기서 건너뛰면 그 복구 경로가 막혀 회고를 새로 저장할 때까지 같은 화면에 갇힌다.
+     */
     @Test
-    void 새로_저장된_거래가_없으면_재계산을_부르지_않는다() {
+    void 새로_저장된_거래가_없어도_재계산을_부른다() {
         when(transactionService.upload(USER_ID, file)).thenReturn(uploaded(0));
 
         facade.upload(USER_ID, file);
 
-        verify(clusterRecomputeService, never()).recomputeAll(anyLong());
+        verify(clusterRecomputeService).recomputeAll(USER_ID);
     }
 
     /**
@@ -83,9 +85,13 @@ class TransactionUploadFacadeTest {
      */
     @Test
     void 파사드는_트랜잭션을_열지_않는다() {
-        assertNull(TransactionUploadFacade.class.getAnnotation(Transactional.class));
-        for (Method method : TransactionUploadFacade.class.getDeclaredMethods()) {
-            assertNull(method.getAnnotation(Transactional.class), method.getName());
+        // 스프링과 jakarta 둘 다 본다 — 어느 쪽을 붙여도 업로드와 재계산이 한 트랜잭션이 된다.
+        List<Class<? extends Annotation>> both = List.of(Transactional.class, jakarta.transaction.Transactional.class);
+        for (Class<? extends Annotation> annotation : both) {
+            assertNull(TransactionUploadFacade.class.getAnnotation(annotation), annotation.getName());
+            for (Method method : TransactionUploadFacade.class.getDeclaredMethods()) {
+                assertNull(method.getAnnotation(annotation), annotation.getName() + " on " + method.getName());
+            }
         }
     }
 
