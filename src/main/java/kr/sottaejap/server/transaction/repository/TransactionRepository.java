@@ -1,6 +1,7 @@
 package kr.sottaejap.server.transaction.repository;
 
 import kr.sottaejap.server.transaction.domain.Transaction;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -20,8 +21,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     List<String> findImportHashesByUserId(@Param("userId") long userId);
 
     /**
-     * 선택 조건은 cast로 타입을 먼저 알려 준다. 맨 파라미터로 `:from is null`을 쓰면 PostgreSQL이
+     * 외부 목록(05 §2 `GET /transactions` · E-93)과 내부 AI 조회(05 §3)가 같이 쓰는 질의. 정렬은 양쪽 모두
+     * {@code occurredAt desc, id desc}로 고정이다 — 같은 시각의 거래가 페이지 경계에서 흔들리지 않는다.
+     *
+     * <p>선택 조건은 cast로 타입을 먼저 알려 준다. 맨 파라미터로 `:from is null`을 쓰면 PostgreSQL이
      * "could not determine data type of parameter"로 거절한다.
+     *
+     * <p>{@code hasRetrospect}는 null이면 전체, true면 회고 있는 거래만(회고 이력 탭), false면 없는 거래만이다.
+     * 내부 AI 조회는 null을 넘긴다.
      */
     @Query("""
             select t from Transaction t
@@ -29,12 +36,18 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
               and (cast(:from as Timestamp) is null or t.occurredAt >= :from)
               and (cast(:to as Timestamp) is null or t.occurredAt < :to)
               and (cast(:category as String) is null or t.category = :category)
-            order by t.occurredAt desc
+              and (cast(:hasRetrospect as Boolean) is null
+                   or (:hasRetrospect = true
+                       and exists (select r.id from Retrospect r where r.transactionId = t.id))
+                   or (:hasRetrospect = false
+                       and not exists (select r.id from Retrospect r where r.transactionId = t.id)))
+            order by t.occurredAt desc, t.id desc
             """)
-    List<Transaction> search(@Param("userId") long userId,
+    Page<Transaction> search(@Param("userId") long userId,
                              @Param("from") OffsetDateTime from,
                              @Param("to") OffsetDateTime to,
                              @Param("category") String category,
+                             @Param("hasRetrospect") Boolean hasRetrospect,
                              Pageable pageable);
 
     Optional<Transaction> findByIdAndUserId(Long id, long userId);
