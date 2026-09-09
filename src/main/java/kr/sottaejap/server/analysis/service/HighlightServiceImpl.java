@@ -17,6 +17,7 @@ import java.time.YearMonth;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * '나만의 특징' 한 문장을 AI에게 받는다 (⑨ · FR-11-03 · E-75). {@code ClusterNamingServiceImpl}과 같은 모양이다 —
@@ -27,6 +28,10 @@ import java.util.Map;
  *
  * <p>{@code fallback: true}는 AI가 LLM 없이 정적 문장을 돌려줬다는 뜻이다 (E-38). 그 문장은 집계를 보지 않으므로
  * 우리 템플릿을 쓴다 — 최소한 이 사용자의 카테고리와 금액은 맞다.
+ *
+ * <p><b>집계가 같으면 AI를 다시 부르지 않는다.</b> 집계는 결정론이고(E-18) 이 문장은 집계만 보고 만들므로
+ * (E-75 · NFR-02), 같은 집계에서 다른 문장이 나올 이유가 없다. 캐시가 없으면 S15는 새로고침 · 탭 전환마다
+ * {@code AI_TIMEOUT_MS}(15초)를 기다린다 (PR #16 리뷰 #6).
  */
 @Service
 @RequiredArgsConstructor
@@ -37,8 +42,34 @@ public class HighlightServiceImpl implements HighlightService {
 
     private final AiClient aiClient;
 
+    /**
+     * 사용자별로 <b>한 칸</b>이다. 집계가 바뀌면 그 칸을 통째로 갈아 끼우므로 무효화 훅이 필요 없다 —
+     * {@code ClusterRecomputeService.recomputeAll}을 건드리지 않는다. 옛 집계를 키로 쌓아 두면 회고를 저장할
+     * 때마다 항목이 늘지만, 한 칸이면 항목 수가 사용자 수를 넘지 않는다.
+     *
+     * <p>ponytail: 인메모리이고 인스턴스가 하나라는 전제다 (07 §1 · {@code NotificationServiceImpl}과 같은 전제).
+     * 인스턴스가 늘면 같은 문장을 인스턴스 수만큼 만들고, 사용자가 수만 명이 되면 상한이 필요하다. 그때
+     * DB 컬럼이나 LRU로 옮긴다. 배포하면 비는 것은 문제가 아니라 이점이다 — 프롬프트를 고치면 옛 문장이 남지 않는다.
+     */
+    private final Map<Long, Cached> cache = new ConcurrentHashMap<>();
+
+    /**
+     * 캐시 키는 집계 그 자체다. {@link AnalysisSummary} 이하가 전부 record라 {@code equals}가 값 비교이고,
+     * record라 기준월이 {@code null}인 경우(거래가 없는 사용자)도 그냥 같다고 나온다.
+     */
+    private record Key(YearMonth analysisYearMonth, AnalysisSummary summary) {
+    }
+
+    private record Cached(Key key, String highlight) {
+    }
+
     @Override
     public String highlight(long userId, YearMonth analysisYearMonth, AnalysisSummary summary) {
+        Key key = new Key(analysisYearMonth, summary);
+        Cached cached = cache.get(userId);
+        if (cached != null && cached.key().equals(key)) {
+            return cached.highlight();
+        }
         try {
             ChatResponse response = aiClient.chat(new ChatRequest(
                     NARRATE_MESSAGE,
@@ -47,9 +78,11 @@ public class HighlightServiceImpl implements HighlightService {
                             state(analysisYearMonth, summary)),
                     List.of()));
             String reply = response.reply() == null ? "" : response.reply().strip();
+            // 폴백 · 빈 문장은 집계를 보지 않은 문장이라 캐시하지 않는다 — AI가 돌아오면 다시 부른다 (E-38).
             if (reply.isBlank() || response.isFallback()) {
                 return HighlightTemplate.highlightFor(summary);
             }
+            cache.put(userId, new Cached(key, reply));
             return reply;
         } catch (BusinessException llmUnavailable) {
             return HighlightTemplate.highlightFor(summary);

@@ -28,6 +28,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -143,6 +144,69 @@ class HighlightServiceImplTest {
         assertEquals("한 문장", service.highlight(USER_ID, null, summary()));
     }
 
+    @Test
+    void 집계가_같으면_AI를_다시_부르지_않는다() {
+        when(aiClient.chat(any())).thenReturn(reply("배달이 예산의 10%였어요."));
+
+        String first = service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+        String second = service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+
+        assertEquals(first, second);
+        verify(aiClient, times(1)).chat(any());
+    }
+
+    @Test
+    void 집계가_바뀌면_AI를_다시_부른다() {
+        // 회고를 저장하면 재계산이 집계를 바꾼다 — 키가 집계라 무효화 훅 없이 miss가 난다.
+        when(aiClient.chat(any())).thenReturn(reply("첫 문장"), reply("새 문장"));
+
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+
+        assertEquals("새 문장", service.highlight(USER_ID, ANALYSIS_MONTH, otherSummary()));
+        verify(aiClient, times(2)).chat(any());
+    }
+
+    @Test
+    void 기준월이_바뀌면_AI를_다시_부른다() {
+        when(aiClient.chat(any())).thenReturn(reply("8월 문장"), reply("9월 문장"));
+
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+
+        assertEquals("9월 문장", service.highlight(USER_ID, YearMonth.of(2026, 9), summary()));
+        verify(aiClient, times(2)).chat(any());
+    }
+
+    @Test
+    void 사용자가_다르면_남의_문장을_주지_않는다() {
+        when(aiClient.chat(any())).thenReturn(reply("7번 문장"), reply("8번 문장"));
+
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+
+        assertEquals("8번 문장", service.highlight(USER_ID + 1, ANALYSIS_MONTH, summary()));
+        verify(aiClient, times(2)).chat(any());
+    }
+
+    @Test
+    void 폴백_응답은_캐시하지_않는다() {
+        // 집계를 보지 않은 문장이라, AI가 살아나면 다시 물어야 한다 (E-38).
+        when(aiClient.chat(any())).thenReturn(new ChatResponse("정적 문장", List.of(), null, true));
+
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+
+        verify(aiClient, times(2)).chat(any());
+    }
+
+    @Test
+    void AI가_503이어도_캐시하지_않는다() {
+        when(aiClient.chat(any())).thenThrow(new BusinessException(CommonErrorCode.LLM_UNAVAILABLE));
+
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+        service.highlight(USER_ID, ANALYSIS_MONTH, summary());
+
+        verify(aiClient, times(2)).chat(any());
+    }
+
     private Map<String, Object> capturedState() {
         return capturedTaskContext().state();
     }
@@ -163,6 +227,15 @@ class HighlightServiceImplTest {
 
     private static ChatResponse reply(String reply) {
         return new ChatResponse(reply, List.of(), null, false);
+    }
+
+    /** 회고를 한 건 더 저장해 배달 합계와 판정이 바뀐 모습. */
+    private static AnalysisSummary otherSummary() {
+        return new AnalysisSummary(
+                List.of(new VerdictSummary(Verdict.SUSTAIN, 1, 168_000, 0.168),
+                        new VerdictSummary(Verdict.ADJUST, 1, 120_000, 0.120)),
+                new PendingSummary(1, 24_000, 0.024),
+                List.of(new CategorySummary("배달", TimeSlot.NIGHT, 15_000, 120_000, Verdict.ADJUST)));
     }
 
     private static AnalysisSummary summary() {
