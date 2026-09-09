@@ -13,7 +13,7 @@ import java.util.List;
  * @param message        INTRO에서는 생략 가능 (서버가 고정 문구로 대체)
  * @param step           생략 시 INTRO
  * @param reflection     사용자가 이미 확인한 값. 생략 시 전부 미확정
- * @param recentMessages 최근 대화. 서버는 최근 6개만 넘긴다 (E-87). 항목은 {@link ChatMessage}의 제약(role · 1~500자)을
+ * @param recentMessages 최근 대화. 서버는 최근 6개만 넘긴다 (E-87). 항목은 {@link ChatMessage}의 제약(role · user 500자 · assistant 2,000자)을
  *                       어기면 400 INVALID_INPUT — AI를 부르지 않는다 (E-109)
  */
 public record RetrospectChatRequest(
