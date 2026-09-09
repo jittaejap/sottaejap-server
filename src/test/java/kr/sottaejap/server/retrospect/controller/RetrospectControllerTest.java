@@ -222,6 +222,18 @@ class RetrospectControllerTest {
         verifyNoInteractions(retrospectService);
     }
 
+    /** 이번 발화에도 상한이 있다 (E-112) — 붙여넣기 한 번에 프롬프트 예산이 무너지지 않는다. */
+    @Test
+    void 상한을_넘긴_message는_400_INVALID_INPUT이고_서비스를_부르지_않는다() throws Exception {
+        mockMvc.perform(post("/retrospects/chat").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"transactionId":1043,"message":"%s","step":"SATISFACTION"}
+                        """.formatted("가".repeat(501))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+
+        verifyNoInteractions(retrospectService);
+    }
+
     @Test
     void AI가_없으면_503_LLM_UNAVAILABLE이다() throws Exception {
         when(retrospectService.chat(eq(USER_ID), any()))
