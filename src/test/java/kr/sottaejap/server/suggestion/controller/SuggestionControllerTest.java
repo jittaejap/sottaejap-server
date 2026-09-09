@@ -135,6 +135,6 @@ class SuggestionControllerTest {
 
     private static SuggestionView view() {
         return new SuggestionView(7L, 12L, "심야 배달", 96_000, 12_000, 8, -0.42, Quadrant.PRIORITY,
-                8, 96_000, null, SuggestionStatus.PROPOSED, "심야 배달은(는) 이번 달 96,000원으로 …");
+                8, 96_000, null, SuggestionStatus.PROPOSED, "심야 배달, 이번 달 96,000원으로 …");
     }
 }
