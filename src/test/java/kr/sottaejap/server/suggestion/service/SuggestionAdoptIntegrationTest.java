@@ -79,7 +79,7 @@ class SuggestionAdoptIntegrationTest {
     @Test
     void 채택하면_목표_전망이_움직이고_재계산해도_금액이_흔들리지_않는다() {
         writeThreeLowRetrospects();
-        GoalView goal = goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, 0));
+        GoalView goal = goalService.create(userId, new GoalRequest("여행 자금", 1_000_000, null, 0));
         long suggestionId = suggestionService.list(userId, null).suggestions().getFirst().id();
 
         SuggestionView adopted = suggestionService.adopt(userId, suggestionId,

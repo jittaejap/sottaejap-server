@@ -121,9 +121,9 @@ class MonthlySnapshotServiceImplTest {
                 .thenReturn(Optional.empty(), Optional.of(snapshot("2026-08", 31_000, 2, 2, 29_000)));
         // 목표 둘 — 채택 절감액 3 : 1. 세 번째 목표는 채택 제안이 없어 배분 대상이 아니다
         when(goalService.list(USER_ID)).thenReturn(new GoalListResponse(List.of(
-                new GoalView(1L, "여행", 1_000_000, 100_000, 30_000, 0.1, 0.13),
-                new GoalView(2L, "노트북", 500_000, 0, 10_000, 0.0, 0.02),
-                new GoalView(3L, "비상금", 300_000, 0, 0, 0.0, 0.0))));
+                new GoalView(1L, "여행", 1_000_000, null, 100_000, 30_000, 0.1, 0.13),
+                new GoalView(2L, "노트북", 500_000, null, 0, 10_000, 0.0, 0.02),
+                new GoalView(3L, "비상금", 300_000, null, 0, 0, 0.0, 0.0))));
 
         MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
 
@@ -331,7 +331,7 @@ class MonthlySnapshotServiceImplTest {
         when(monthlySnapshotRepository.findByUserIdAndYearMonth(USER_ID, "2026-08"))
                 .thenReturn(Optional.empty(), Optional.of(snapshot("2026-08", 31_000, 0, 0, 29_000)));
         when(goalService.list(USER_ID)).thenReturn(new GoalListResponse(List.of(
-                new GoalView(3L, "비상금", 300_000, 0, 0, 0.0, 0.0))));
+                new GoalView(3L, "비상금", 300_000, null, 0, 0, 0.0, 0.0))));
 
         MonthlyReportResponse response = service.monthly(USER_ID, AUGUST, SEPTEMBER);
 

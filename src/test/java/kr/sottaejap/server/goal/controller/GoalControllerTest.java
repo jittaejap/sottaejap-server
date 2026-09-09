@@ -18,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -56,20 +57,21 @@ class GoalControllerTest {
     @Test
     void 목록은_달성률과_전망을_같이_준다() throws Exception {
         when(goalService.list(USER_ID)).thenReturn(new GoalListResponse(
-                List.of(new GoalView(3L, "여행 자금", 1_000_000, 250_000, 24_000, 0.25, 0.274))));
+                List.of(new GoalView(3L, "여행 자금", 1_000_000, LocalDate.of(2026, 12, 25), 250_000, 24_000, 0.25, 0.274))));
 
         mockMvc.perform(get("/goals"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.goals[0].adoptedSaving").value(24_000))
                 .andExpect(jsonPath("$.data.goals[0].achievementRate").value(0.25))
-                .andExpect(jsonPath("$.data.goals[0].projectedRate").value(0.274));
+                .andExpect(jsonPath("$.data.goals[0].projectedRate").value(0.274))
+                .andExpect(jsonPath("$.data.goals[0].targetDate").value("2026-12-25"));
     }
 
     @Test
     void 등록_본문을_그대로_넘긴다() throws Exception {
         when(goalService.create(eq(USER_ID), any()))
-                .thenReturn(new GoalView(3L, "여행 자금", 1_000_000, 0, 0, 0.0, 0.0));
+                .thenReturn(new GoalView(3L, "여행 자금", 1_000_000, null, 0, 0, 0.0, 0.0));
 
         mockMvc.perform(post("/goals").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"여행 자금\",\"targetAmount\":1000000}"))
@@ -80,6 +82,39 @@ class GoalControllerTest {
         verify(goalService).create(eq(USER_ID), captor.capture());
         assertEquals("여행 자금", captor.getValue().name());
         assertNull(captor.getValue().currentAmount());
+        // 지금 배포된 온보딩은 예정일을 보내지 않는다 — 그래도 200이어야 한다 (선택 항목)
+        assertNull(captor.getValue().targetDate());
+    }
+
+    @Test
+    void 달성_예정일을_실으면_그대로_넘어간다() throws Exception {
+        when(goalService.create(eq(USER_ID), any()))
+                .thenReturn(new GoalView(3L, "여행 자금", 1_000_000, LocalDate.of(2026, 12, 25), 0, 0, 0.0, 0.0));
+
+        mockMvc.perform(post("/goals").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"여행 자금\",\"targetAmount\":1000000,\"targetDate\":\"2026-12-25\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.targetDate").value("2026-12-25"));
+
+        ArgumentCaptor<GoalRequest> captor = ArgumentCaptor.forClass(GoalRequest.class);
+        verify(goalService).create(eq(USER_ID), captor.capture());
+        assertEquals(LocalDate.of(2026, 12, 25), captor.getValue().targetDate());
+    }
+
+    @Test
+    void 달성_예정일_형식이_틀리면_400이다() throws Exception {
+        mockMvc.perform(post("/goals").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"여행\",\"targetAmount\":1000000,\"targetDate\":\"2026-13-99\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+
+        mockMvc.perform(post("/goals").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"여행\",\"targetAmount\":1000000,\"targetDate\":\"2026/12/25\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+
+        // 형식이 틀리면 본문을 읽다 실패한다 — 아무것도 저장되지 않는다
+        verifyNoInteractions(goalService);
     }
 
     @Test

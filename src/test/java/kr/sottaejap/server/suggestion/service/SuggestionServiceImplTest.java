@@ -139,7 +139,7 @@ class SuggestionServiceImplTest {
         when(suggestionRepository.findByIdAndUserId(1L, USER_ID)).thenReturn(Optional.of(suggestion));
         when(behaviorClusterRepository.findById(1L)).thenReturn(Optional.of(cluster(1L, Quadrant.MINOR, "심야 배달")));
         when(goalRepository.findByIdAndUserIdAndDeletedAtIsNull(5L, USER_ID))
-                .thenReturn(Optional.of(Goal.create(USER_ID, "여행", 1_000_000, 0)));
+                .thenReturn(Optional.of(Goal.create(USER_ID, "여행", 1_000_000, null, 0)));
 
         SuggestionView view = service.adopt(USER_ID, 1L, new SuggestionAdoptRequest(2, 5L));
 

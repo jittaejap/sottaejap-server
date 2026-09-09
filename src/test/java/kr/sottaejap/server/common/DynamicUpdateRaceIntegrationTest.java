@@ -66,7 +66,7 @@ class DynamicUpdateRaceIntegrationTest {
         userId = userRepository.save(user).getId();
         clusterId = behaviorClusterRepository.save(BehaviorCluster.create(userId, "식비|야식|충동|혼자")).getId();
         suggestionId = suggestionRepository.save(Suggestion.propose(clusterId, 3, 30_000)).getId();
-        goalId = goalRepository.save(Goal.create(userId, "여행 자금", 1_000_000, 0)).getId();
+        goalId = goalRepository.save(Goal.create(userId, "여행 자금", 1_000_000, null, 0)).getId();
     }
 
     @AfterEach

@@ -48,7 +48,7 @@ public class GoalServiceImpl implements GoalService {
     @Transactional
     public GoalView create(long userId, GoalRequest request) {
         Goal goal = goalRepository.save(
-                Goal.create(userId, request.name(), request.targetAmount(), request.currentAmount()));
+                Goal.create(userId, request.name(), request.targetAmount(), request.targetDate(), request.currentAmount()));
         return GoalView.of(goal, 0);
     }
 
@@ -56,7 +56,7 @@ public class GoalServiceImpl implements GoalService {
     @Transactional
     public GoalView update(long userId, long goalId, GoalRequest request) {
         Goal goal = find(userId, goalId);
-        goal.update(request.name(), request.targetAmount(), request.currentAmount());
+        goal.update(request.name(), request.targetAmount(), request.targetDate(), request.currentAmount());
         return GoalView.of(goal, adoptedSavingsByGoal(List.of(goal)).getOrDefault(goalId, 0));
     }
 
