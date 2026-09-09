@@ -73,7 +73,7 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 // 공유 시크릿으로 InternalSecretFilter가 막는다.
                                 "/internal/ai/**",
-                                // 07 §4 연동 확인용. 운영에서는 프록시가 /internal 접두사를 열지 않는다.
+                                // 07 §4 연동 확인용. 여기도 InternalSecretFilter가 X-Internal-Secret을 요구한다 (#75).
                                 "/internal-test/**"
                         ).permitAll()
                         .anyRequest().authenticated())
